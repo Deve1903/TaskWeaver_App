@@ -1,0 +1,16 @@
+{
+  "name": "TaskWeaver",
+  "short_name": "TaskWeaver",
+  "description": "Intelligent Task Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#6B46C1",
+  "background_color": "#667eea",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

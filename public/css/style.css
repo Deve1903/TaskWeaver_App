@@ -1,0 +1,506 @@
+/* TaskWeaver Main Styles */
+:root {
+    --primary: #6B46C1;
+    --primary-dark: #553C9A;
+    --primary-light: #9F7AEA;
+    --success: #48BB78;
+    --danger: #F56565;
+    --warning: #F6AD55;
+    --info: #4299E1;
+    --dark: #1A202C;
+    --light: #F7FAFC;
+    --gray: #718096;
+}
+
+/* Global Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+}
+
+/* Glass Card Effect */
+.glass-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+}
+
+/* Task Cards */
+.task-critical { border-left: 5px solid #dc3545; background: rgba(220, 53, 69, 0.05); }
+.task-high { border-left: 5px solid #fd7e14; background: rgba(253, 126, 20, 0.05); }
+.task-medium { border-left: 5px solid #ffc107; background: rgba(255, 193, 7, 0.05); }
+.task-low { border-left: 5px solid #28a745; background: rgba(40, 167, 69, 0.05); }
+
+.task-item {
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+
+.task-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Calendar Styles */
+.calendar-container {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.fc-event {
+    cursor: pointer;
+    transition: transform 0.2s;
+    border-radius: 8px !important;
+    border: none !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+}
+
+.fc-event:hover {
+    transform: scale(1.02);
+    filter: brightness(1.05);
+}
+
+.fc-day-today {
+    background: rgba(107, 70, 193, 0.05) !important;
+}
+
+.fc-timegrid-slot:hover {
+    background: rgba(107, 70, 193, 0.05);
+}
+
+/* Timer Styles */
+.timer-container {
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border-radius: 15px;
+    color: white;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.timer-display {
+    font-size: 3rem;
+    font-weight: bold;
+    font-family: monospace;
+    letter-spacing: 2px;
+}
+
+.btn-focus {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid white;
+    color: white;
+    border-radius: 25px;
+    padding: 8px 20px;
+    margin: 5px;
+    transition: all 0.3s ease;
+}
+
+.btn-focus:hover {
+    background: white;
+    color: var(--primary);
+    transform: scale(1.05);
+}
+
+/* Project Badges */
+.project-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    margin: 3px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* Severity Badges */
+.severity-Critical { 
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+.severity-High { 
+    background: linear-gradient(135deg, #fd7e14, #e06c0c);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+.severity-Medium { 
+    background: linear-gradient(135deg, #ffc107, #e0a800);
+    color: black;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+.severity-Low { 
+    background: linear-gradient(135deg, #28a745, #218838);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* Suggestion Items */
+.suggestion-item {
+    padding: 12px;
+    background: linear-gradient(135deg, #f5f0ff 0%, #fff 100%);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    border-left: 4px solid var(--primary);
+    transition: transform 0.2s;
+}
+
+.suggestion-item:hover {
+    transform: translateX(5px);
+}
+
+/* Logo Styles */
+.logo-small {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.logo-small img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Form Controls */
+.form-control {
+    border: 2px solid #E9D8FD;
+    border-radius: 12px;
+    padding: 10px 15px;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(107, 70, 193, 0.1);
+    outline: none;
+}
+
+/* Buttons */
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border: none;
+    border-radius: 12px;
+    padding: 10px 20px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(107, 70, 193, 0.4);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    border: none;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+}
+
+/* Progress Bar */
+.progress {
+    border-radius: 10px;
+    overflow: hidden;
+    background: #e9ecef;
+}
+
+.progress-bar {
+    transition: width 0.6s ease;
+    border-radius: 10px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Toast Notifications */
+.toast-notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    animation: slideInRight 0.3s ease-out;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+.toast-notification.alert-success {
+    border-left: 4px solid var(--success);
+}
+
+.toast-notification.alert-danger {
+    border-left: 4px solid var(--danger);
+}
+
+.toast-notification.alert-warning {
+    border-left: 4px solid var(--warning);
+}
+
+.toast-notification.alert-info {
+    border-left: 4px solid var(--info);
+}
+
+/* Loading Spinner */
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--primary);
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-dark);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .glass-card {
+        padding: 15px;
+    }
+    
+    .timer-display {
+        font-size: 2rem;
+    }
+    
+    .fc-header-toolbar {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .fc-header-toolbar .fc-left,
+    .fc-header-toolbar .fc-right {
+        display: flex;
+        justify-content: center;
+    }
+    
+    .toast-notification {
+        min-width: 250px;
+        bottom: 10px;
+        right: 10px;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .glass-card {
+        background: rgba(26, 32, 44, 0.95);
+        color: #F7FAFC;
+    }
+    
+    .form-control {
+        background: rgba(45, 55, 72, 0.9);
+        border-color: #4A5568;
+        color: #F7FAFC;
+    }
+    
+    .form-control:focus {
+        background: #2D3748;
+        color: #F7FAFC;
+    }
+    
+    .suggestion-item {
+        background: linear-gradient(135deg, #2D3748 0%, #1A202C 100%);
+        color: #F7FAFC;
+    }
+    
+    .task-item {
+        background: #2D3748 !important;
+        color: #F7FAFC;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .glass-card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+    
+    .btn, .fc-header-toolbar, .timer-container {
+        display: none;
+    }
+}/* Additional Calendar Styles */
+.fc-daygrid-day-frame {
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.fc-daygrid-day-frame:hover {
+    background: rgba(107, 70, 193, 0.05);
+}
+
+.fc-timegrid-slot {
+    cursor: pointer;
+    height: 60px;
+}
+
+.fc-timegrid-slot:hover {
+    background: rgba(107, 70, 193, 0.05);
+}
+
+/* Drag & Drop Styles */
+.task-card[draggable="true"] {
+    cursor: grab;
+    user-select: none;
+}
+
+.task-card[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.fc-draggable {
+    cursor: grab;
+}
+
+/* Funnel Scrollbar */
+.funnel-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.funnel-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.funnel-container::-webkit-scrollbar-thumb {
+    background: var(--primary-light);
+    border-radius: 10px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .funnel-container {
+        height: auto;
+        max-height: 400px;
+        margin-bottom: 20px;
+    }
+    
+    .calendar-container {
+        height: 500px;
+    }
+    
+    .quick-add-btn {
+        bottom: 20px;
+        right: 20px;
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+    }
+}

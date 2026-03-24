@@ -1,0 +1,170 @@
+{"timestamp":"2026-03-24T13:13:49.245Z","level":"INFO","message":"Database connected successfully"}
+{"timestamp":"2026-03-24T13:13:49.272Z","level":"SUCCESS","message":"Users table ready"}
+{"timestamp":"2026-03-24T13:13:49.273Z","level":"SUCCESS","message":"Tasks table ready"}
+{"timestamp":"2026-03-24T13:13:49.273Z","level":"SUCCESS","message":"Reminders table ready"}
+{"timestamp":"2026-03-24T13:13:49.273Z","level":"SUCCESS","message":"Activity log table ready"}
+{"timestamp":"2026-03-24T13:13:49.274Z","level":"SUCCESS","message":"Email log table ready"}
+{"timestamp":"2026-03-24T13:13:49.274Z","level":"SUCCESS","message":"Suggestions table ready"}
+{"timestamp":"2026-03-24T13:13:49.275Z","level":"SUCCESS","message":"Projects table ready"}
+{"timestamp":"2026-03-24T13:13:49.277Z","level":"SUCCESS","message":"All indexes created"}
+{"timestamp":"2026-03-24T13:13:49.277Z","level":"SUCCESS","message":"Database initialization complete"}
+{"timestamp":"2026-03-24T13:13:49.331Z","level":"SUCCESS","message":"Demo user created: demo@taskweaver.com / Demo@2024"}
+{"timestamp":"2026-03-24T13:13:50.548Z","level":"SUCCESS","message":"Email server is ready"}
+{"timestamp":"2026-03-24T13:14:32.217Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T13:14:32.289Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T13:14:32.290Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T13:14:56.462Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T13:14:56.522Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T13:14:56.523Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T13:17:27.477Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T13:17:27.541Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T13:17:27.543Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T13:18:01.309Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T13:18:01.363Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T13:18:01.364Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T14:23:12.065Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T14:23:12.119Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T14:23:12.120Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T14:24:34.913Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T14:24:34.971Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T14:24:34.973Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T14:35:31.346Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T14:35:31.399Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T14:35:31.399Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T14:45:25.198Z","level":"INFO","message":"Login attempt for: ","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T14:45:25.199Z","level":"WARNING","message":"Login failed - user not found: "}
+{"timestamp":"2026-03-24T14:46:16.435Z","level":"INFO","message":"Login attempt for: ","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T14:46:16.437Z","level":"WARNING","message":"Login failed - user not found: "}
+{"timestamp":"2026-03-24T14:53:35.837Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T14:53:35.913Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T14:53:35.914Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T15:01:12.321Z","level":"INFO","message":"Received shutdown signal, closing gracefully..."}
+{"timestamp":"2026-03-24T15:01:12.346Z","level":"INFO","message":"Database connection closed"}
+{"timestamp":"2026-03-24T15:01:32.284Z","level":"INFO","message":"Database connected successfully"}
+{"timestamp":"2026-03-24T15:01:32.294Z","level":"SUCCESS","message":"Users table ready"}
+{"timestamp":"2026-03-24T15:01:32.294Z","level":"SUCCESS","message":"Tasks table ready"}
+{"timestamp":"2026-03-24T15:01:32.295Z","level":"SUCCESS","message":"Reminders table ready"}
+{"timestamp":"2026-03-24T15:01:32.295Z","level":"SUCCESS","message":"Activity log table ready"}
+{"timestamp":"2026-03-24T15:01:32.295Z","level":"SUCCESS","message":"Email log table ready"}
+{"timestamp":"2026-03-24T15:01:32.295Z","level":"SUCCESS","message":"Suggestions table ready"}
+{"timestamp":"2026-03-24T15:01:32.296Z","level":"SUCCESS","message":"Projects table ready"}
+{"timestamp":"2026-03-24T15:01:32.297Z","level":"SUCCESS","message":"All indexes created"}
+{"timestamp":"2026-03-24T15:01:32.297Z","level":"SUCCESS","message":"Database initialization complete"}
+{"timestamp":"2026-03-24T15:01:32.298Z","level":"INFO","message":"Demo user already exists"}
+{"timestamp":"2026-03-24T15:01:33.655Z","level":"SUCCESS","message":"Email server is ready"}
+{"timestamp":"2026-03-24T15:03:58.203Z","level":"ACTIVITY","message":"User 1: LOGOUT","data":{"userId":1,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T15:03:58.204Z","level":"INFO","message":"User logged out: demo@taskweaver.com"}
+{"timestamp":"2026-03-24T15:04:32.600Z","level":"INFO","message":"Login attempt for: demo@taskweaver.com","data":{"ip":"::1"}}
+{"timestamp":"2026-03-24T15:04:32.647Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T15:04:32.647Z","level":"SUCCESS","message":"User logged in: demo@taskweaver.com (ID: 1)"}
+{"timestamp":"2026-03-24T15:14:56.980Z","level":"INFO","message":"Received shutdown signal, closing gracefully..."}
+{"timestamp":"2026-03-24T15:14:57.001Z","level":"INFO","message":"Database connection closed"}
+{"timestamp":"2026-03-24T15:15:10.394Z","level":"INFO","message":"Database connected successfully"}
+{"timestamp":"2026-03-24T15:15:10.408Z","level":"SUCCESS","message":"Users table ready"}
+{"timestamp":"2026-03-24T15:15:10.408Z","level":"SUCCESS","message":"Tasks table ready"}
+{"timestamp":"2026-03-24T15:15:10.408Z","level":"SUCCESS","message":"Reminders table ready"}
+{"timestamp":"2026-03-24T15:15:10.409Z","level":"SUCCESS","message":"Activity log table ready"}
+{"timestamp":"2026-03-24T15:15:10.409Z","level":"SUCCESS","message":"Email log table ready"}
+{"timestamp":"2026-03-24T15:15:10.409Z","level":"SUCCESS","message":"Suggestions table ready"}
+{"timestamp":"2026-03-24T15:15:10.410Z","level":"SUCCESS","message":"Projects table ready"}
+{"timestamp":"2026-03-24T15:15:10.411Z","level":"SUCCESS","message":"Database initialization complete"}
+{"timestamp":"2026-03-24T15:15:10.412Z","level":"INFO","message":"Demo user already exists"}
+{"timestamp":"2026-03-24T15:15:11.825Z","level":"SUCCESS","message":"Email server is ready"}
+{"timestamp":"2026-03-24T15:18:29.386Z","level":"ACTIVITY","message":"User 1: TASK_CREATED","data":{"userId":1,"action":"TASK_CREATED","details":"Task: Task Efficiency ","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/tasks"}}
+{"timestamp":"2026-03-24T15:23:18.284Z","level":"ACTIVITY","message":"User 1: LOGOUT","data":{"userId":1,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T15:23:46.004Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T15:24:19.322Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T15:46:32.313Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T15:46:48.432Z","level":"ACTIVITY","message":"User 1: SETTINGS_UPDATED","data":{"userId":1,"action":"SETTINGS_UPDATED","details":"Settings updated","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/settings"}}
+{"timestamp":"2026-03-24T15:50:00.906Z","level":"ACTIVITY","message":"User 1: TASK_CREATED","data":{"userId":1,"action":"TASK_CREATED","details":"Task: Task Efficiency ","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/tasks"}}
+{"timestamp":"2026-03-24T15:51:54.270Z","level":"ACTIVITY","message":"User 1: TASK_UPDATED","data":{"userId":1,"action":"TASK_UPDATED","details":"Task ID: 2","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/tasks/2"}}
+{"timestamp":"2026-03-24T15:53:09.890Z","level":"ACTIVITY","message":"User 1: LOGOUT","data":{"userId":1,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T15:53:56.415Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T15:54:08.111Z","level":"ACTIVITY","message":"User 1: LOGOUT","data":{"userId":1,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T15:55:12.555Z","level":"ACTIVITY","message":"User 2: REGISTER","data":{"userId":2,"action":"REGISTER","details":"User registered successfully","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/register"}}
+{"timestamp":"2026-03-24T15:55:42.321Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T15:58:06.855Z","level":"ACTIVITY","message":"User 1: LOGOUT","data":{"userId":1,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T15:58:46.905Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T16:01:46.747Z","level":"ACTIVITY","message":"User 2: TASK_CREATED","data":{"userId":2,"action":"TASK_CREATED","details":"Task: Task Efficiency ","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/tasks"}}
+{"timestamp":"2026-03-24T16:02:58.019Z","level":"ACTIVITY","message":"User 2: TASK_UPDATED","data":{"userId":2,"action":"TASK_UPDATED","details":"Task ID: 3","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/tasks/3"}}
+{"timestamp":"2026-03-24T16:35:06.905Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T16:47:09.226Z","level":"ACTIVITY","message":"User 2: LOGOUT","data":{"userId":2,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T16:50:36.240Z","level":"ACTIVITY","message":"User 2: PASSWORD_RESET","data":{"userId":2,"action":"PASSWORD_RESET","details":"Password reset successfully","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/reset-password"}}
+{"timestamp":"2026-03-24T16:54:21.192Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T16:54:33.987Z","level":"ACTIVITY","message":"User 2: TASK_UPDATED","data":{"userId":2,"action":"TASK_UPDATED","details":"Task ID: 3","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/tasks/3"}}
+{"timestamp":"2026-03-24T17:06:19.768Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T17:09:42.770Z","level":"ACTIVITY","message":"User 2: LOGOUT","data":{"userId":2,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T17:09:44.193Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T17:17:54.078Z","level":"ACTIVITY","message":"User 2: TASK_CREATED","data":{"userId":2,"action":"TASK_CREATED","details":"Task: Task Efficiency ","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/tasks"}}
+{"timestamp":"2026-03-24T17:18:30.731Z","level":"ACTIVITY","message":"User 2: TASK_UPDATED","data":{"userId":2,"action":"TASK_UPDATED","details":"Task ID: 3","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/tasks/3"}}
+{"timestamp":"2026-03-24T17:18:44.613Z","level":"ACTIVITY","message":"User 2: TASK_UPDATED","data":{"userId":2,"action":"TASK_UPDATED","details":"Task ID: 3","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/tasks/3"}}
+{"timestamp":"2026-03-24T17:19:27.949Z","level":"ACTIVITY","message":"User 2: LOGOUT","data":{"userId":2,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T17:19:32.682Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T17:33:19.678Z","level":"ACTIVITY","message":"User 2: TASK_CREATED","data":{"userId":2,"action":"TASK_CREATED","details":"Task: Task Efficiency ","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/tasks"}}
+{"timestamp":"2026-03-24T17:34:33.841Z","level":"ACTIVITY","message":"User 2: LOGOUT","data":{"userId":2,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T17:34:34.891Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T18:04:36.759Z","level":"ACTIVITY","message":"User 2: LOGOUT","data":{"userId":2,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T18:04:38.028Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T18:07:39.977Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T18:08:56.897Z","level":"ACTIVITY","message":"User 1: LOGIN","data":{"userId":1,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T18:54:39.488Z","level":"ACTIVITY","message":"User 2: TASK_UPDATED","data":{"userId":2,"action":"TASK_UPDATED","details":"Task ID: 5","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/tasks/5"}}
+{"timestamp":"2026-03-24T18:54:53.137Z","level":"ACTIVITY","message":"User 2: TASK_UPDATED","data":{"userId":2,"action":"TASK_UPDATED","details":"Task ID: 5","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/tasks/5"}}
+{"timestamp":"2026-03-24T18:59:18.933Z","level":"ACTIVITY","message":"User 2: SETTINGS_UPDATED","data":{"userId":2,"action":"SETTINGS_UPDATED","details":"Settings updated","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"PUT","url":"/api/settings"}}
+{"timestamp":"2026-03-24T18:59:28.030Z","level":"ACTIVITY","message":"User 2: LOGOUT","data":{"userId":2,"action":"LOGOUT","details":"User logged out","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/logout"}}
+{"timestamp":"2026-03-24T18:59:29.697Z","level":"ACTIVITY","message":"User 2: LOGIN","data":{"userId":2,"action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T19:31:20.045Z","level":"INFO","message":"Database connected successfully"}
+{"timestamp":"2026-03-24T19:31:20.059Z","level":"SUCCESS","message":"Users table ready"}
+{"timestamp":"2026-03-24T19:31:20.060Z","level":"SUCCESS","message":"Tasks table ready"}
+{"timestamp":"2026-03-24T19:31:20.062Z","level":"SUCCESS","message":"Shared schedules table ready"}
+{"timestamp":"2026-03-24T19:31:20.063Z","level":"SUCCESS","message":"Reminders table ready"}
+{"timestamp":"2026-03-24T19:31:20.063Z","level":"SUCCESS","message":"Activity log table ready"}
+{"timestamp":"2026-03-24T19:31:20.063Z","level":"SUCCESS","message":"Email log table ready"}
+{"timestamp":"2026-03-24T19:31:20.064Z","level":"SUCCESS","message":"Suggestions table ready"}
+{"timestamp":"2026-03-24T19:31:20.064Z","level":"SUCCESS","message":"Projects table ready"}
+{"timestamp":"2026-03-24T19:31:20.067Z","level":"SUCCESS","message":"Database initialization complete"}
+{"timestamp":"2026-03-24T19:31:20.068Z","level":"INFO","message":"Demo user already exists: demo@taskweaver.com"}
+{"timestamp":"2026-03-24T19:31:21.807Z","level":"SUCCESS","message":"Email server is ready"}
+{"timestamp":"2026-03-24T19:32:31.582Z","level":"INFO","message":"Database connected successfully"}
+{"timestamp":"2026-03-24T19:32:31.591Z","level":"SUCCESS","message":"Users table ready"}
+{"timestamp":"2026-03-24T19:32:31.592Z","level":"SUCCESS","message":"Tasks table ready"}
+{"timestamp":"2026-03-24T19:32:31.592Z","level":"SUCCESS","message":"Shared schedules table ready"}
+{"timestamp":"2026-03-24T19:32:31.592Z","level":"SUCCESS","message":"Reminders table ready"}
+{"timestamp":"2026-03-24T19:32:31.593Z","level":"SUCCESS","message":"Activity log table ready"}
+{"timestamp":"2026-03-24T19:32:31.593Z","level":"SUCCESS","message":"Email log table ready"}
+{"timestamp":"2026-03-24T19:32:31.593Z","level":"SUCCESS","message":"Suggestions table ready"}
+{"timestamp":"2026-03-24T19:32:31.593Z","level":"SUCCESS","message":"Projects table ready"}
+{"timestamp":"2026-03-24T19:32:31.595Z","level":"SUCCESS","message":"Database initialization complete"}
+{"timestamp":"2026-03-24T19:32:31.595Z","level":"INFO","message":"Demo user already exists: demo@taskweaver.com"}
+{"timestamp":"2026-03-24T19:32:32.903Z","level":"SUCCESS","message":"Email server is ready"}
+{"timestamp":"2026-03-24T19:33:10.476Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T19:33:24.297Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T19:52:41.955Z","level":"INFO","message":"Database connected successfully"}
+{"timestamp":"2026-03-24T19:52:41.966Z","level":"SUCCESS","message":"Users table ready"}
+{"timestamp":"2026-03-24T19:52:41.967Z","level":"SUCCESS","message":"Tasks table ready"}
+{"timestamp":"2026-03-24T19:52:41.968Z","level":"SUCCESS","message":"Shared schedules table ready"}
+{"timestamp":"2026-03-24T19:52:41.968Z","level":"SUCCESS","message":"Reminders table ready"}
+{"timestamp":"2026-03-24T19:52:41.969Z","level":"SUCCESS","message":"Activity log table ready"}
+{"timestamp":"2026-03-24T19:52:41.969Z","level":"SUCCESS","message":"Email log table ready"}
+{"timestamp":"2026-03-24T19:52:41.970Z","level":"SUCCESS","message":"Suggestions table ready"}
+{"timestamp":"2026-03-24T19:52:41.970Z","level":"SUCCESS","message":"Projects table ready"}
+{"timestamp":"2026-03-24T19:52:41.987Z","level":"SUCCESS","message":"Database initialization complete"}
+{"timestamp":"2026-03-24T19:52:41.988Z","level":"INFO","message":"Demo user already exists: demo@taskweaver.com"}
+{"timestamp":"2026-03-24T19:52:43.262Z","level":"SUCCESS","message":"Email server is ready"}
+{"timestamp":"2026-03-24T19:53:45.890Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T19:53:48.520Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T19:54:08.304Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T20:01:36.012Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T20:01:44.824Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
+{"timestamp":"2026-03-24T20:11:28.298Z","level":"INFO","message":"Database connected successfully"}
+{"timestamp":"2026-03-24T20:11:28.307Z","level":"SUCCESS","message":"Users table ready"}
+{"timestamp":"2026-03-24T20:11:28.307Z","level":"SUCCESS","message":"Tasks table ready"}
+{"timestamp":"2026-03-24T20:11:28.308Z","level":"SUCCESS","message":"Shared schedules table ready"}
+{"timestamp":"2026-03-24T20:11:28.308Z","level":"SUCCESS","message":"Reminders table ready"}
+{"timestamp":"2026-03-24T20:11:28.308Z","level":"SUCCESS","message":"Activity log table ready"}
+{"timestamp":"2026-03-24T20:11:28.309Z","level":"SUCCESS","message":"Email log table ready"}
+{"timestamp":"2026-03-24T20:11:28.309Z","level":"SUCCESS","message":"Suggestions table ready"}
+{"timestamp":"2026-03-24T20:11:28.309Z","level":"SUCCESS","message":"Projects table ready"}
+{"timestamp":"2026-03-24T20:11:28.310Z","level":"SUCCESS","message":"Database initialization complete"}
+{"timestamp":"2026-03-24T20:11:28.311Z","level":"INFO","message":"Demo user already exists: demo@taskweaver.com"}
+{"timestamp":"2026-03-24T20:11:31.830Z","level":"SUCCESS","message":"Email server is ready"}
+{"timestamp":"2026-03-24T20:11:49.627Z","level":"ACTIVITY","message":"User millionaftermillion@gmail.com (ID: 2): LOGIN","data":{"userId":2,"email":"millionaftermillion@gmail.com","action":"LOGIN","details":"User logged in","ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36","method":"POST","url":"/api/login"}}
