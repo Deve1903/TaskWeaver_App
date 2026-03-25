@@ -298,92 +298,143 @@ function getEmailTemplate(title, content, buttonText = null, buttonLink = null) 
 let transporter = null;
 
 function setupEmailTransporter() {
-    consoleLog('INFO', 'Configuring email transporter...');
+    consoleLog('INFO', 'Configuring email transporter for Render...');
     
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        consoleLog('WARNING', 'Email credentials not configured. Email notifications will be disabled.');
-        consoleLog('INFO', 'To enable email, set EMAIL_USER and EMAIL_PASS in environment variables');
+        consoleLog('WARNING', 'Email credentials not configured');
         return;
     }
     
-    if (process.env.EMAIL_USER === 'your-email@gmail.com') {
-        consoleLog('WARNING', 'Using placeholder email. Please update EMAIL_USER in environment variables');
-        return;
-    }
-    
-    const emailPass = process.env.EMAIL_PASS.replace(/\s/g, '');
+    const emailPass = process.env.EMAIL_PASS;
     const emailUser = process.env.EMAIL_USER.trim();
     
+    consoleLog('INFO', `Using email: ${emailUser}`);
+    
     try {
-        const smtpConfig = isRender ? {
+        // Critical: Use these exact settings for Render
+        const smtpConfig = {
             host: 'smtp.gmail.com',
-            port: 587,
-            secure: false,
-            auth: { user: emailUser, pass: emailPass },
-            tls: { rejectUnauthorized: false },
-            connectionTimeout: 30000,
-            greetingTimeout: 30000,
-            socketTimeout: 30000,
-            debug: false
-        } : {
-            service: 'gmail',
-            auth: { user: emailUser, pass: emailPass },
+            port: 465,  // Use 465 (SSL) instead of 587 (TLS)
+            secure: true,  // SSL
+            auth: {
+                user: emailUser,
+                pass: emailPass
+            },
+            tls: {
+                rejectUnauthorized: false,
+                ciphers: 'SSLv3'
+            },
+            connectionTimeout: 60000,  // Increased timeout
+            greetingTimeout: 60000,
+            socketTimeout: 60000,
             debug: false
         };
         
         transporter = nodemailer.createTransport(smtpConfig);
         
+        // Verify connection with timeout
+        const verifyTimeout = setTimeout(() => {
+            consoleLog('WARNING', 'Email verification taking longer than expected...');
+        }, 5000);
+        
         transporter.verify((error, success) => {
+            clearTimeout(verifyTimeout);
+            
             if (error) {
-                consoleLog('ERROR', '✗ Email server connection FAILED:', error.message);
-                transporter = null;
+                consoleLog('ERROR', 'Email connection failed:', error.message);
+                consoleLog('ERROR', `Error code: ${error.code}`);
+                
+                // Try alternative port if 465 fails
+                if (error.code === 'ECONNECTION') {
+                    consoleLog('INFO', 'Trying alternative SMTP configuration...');
+                    tryAlternativeConfig();
+                }
             } else {
                 consoleLog('SUCCESS', '✓ Email server CONNECTED and READY');
-                consoleLog('SUCCESS', `  └─ Using email: ${emailUser}`);
-                if (isRender) {
-                    consoleLog('SUCCESS', `  └─ Render mode: SMTP on port ${smtpConfig.port}`);
-                }
+                consoleLog('SUCCESS', `  └─ Using: ${emailUser}`);
+                consoleLog('SUCCESS', `  └─ SMTP: smtp.gmail.com:465 (SSL)`);
+            }
+        });
+        
+    } catch (error) {
+        consoleLog('ERROR', 'Email setup error:', error.message);
+        transporter = null;
+    }
+}
+
+function tryAlternativeConfig() {
+    try {
+        const altConfig = {
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+                user: process.env.EMAIL_USER.trim(),
+                pass: process.env.EMAIL_PASS
+            },
+            tls: {
+                rejectUnauthorized: false
+            },
+            connectionTimeout: 60000
+        };
+        
+        transporter = nodemailer.createTransport(altConfig);
+        
+        transporter.verify((error, success) => {
+            if (error) {
+                consoleLog('ERROR', 'Alternative config also failed:', error.message);
+                transporter = null;
+            } else {
+                consoleLog('SUCCESS', '✓ Email connected on port 587');
             }
         });
     } catch (error) {
-        consoleLog('ERROR', 'Failed to setup email transporter:', error.message);
+        consoleLog('ERROR', 'Alternative config error:', error.message);
         transporter = null;
     }
 }
 
 function sendEmail(to, subject, html) {
-    if (!transporter) {
-        consoleLog('WARNING', `Email not sent to ${to}: Email service not configured`);
-        return Promise.reject(new Error('Email service not configured'));
-    }
-    
-    consoleLog('INFO', `Sending email to ${to}: ${subject}`);
-    
-    const mailOptions = {
-        from: `"TaskWeaver" <${process.env.EMAIL_USER}>`,
-        to: to,
-        subject: subject,
-        html: html,
-        headers: {
-            'X-Priority': '3',
-            'X-Mailer': 'TaskWeaver'
+    return new Promise((resolve, reject) => {
+        if (!transporter) {
+            consoleLog('WARNING', `Email not sent - transporter not ready`);
+            reject(new Error('Email service not configured'));
+            return;
         }
-    };
-    
-    return transporter.sendMail(mailOptions)
-        .then(info => {
-            consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject} (Message ID: ${info.messageId})`);
-            return info;
-        })
-        .catch(error => {
-            consoleLog('ERROR', `✗ Failed to send email to ${to}:`, error.message);
-            if (error.code === 'EAUTH') {
-                consoleLog('ERROR', '  └─ Authentication failed. Use App Password for Gmail');
-            } else if (error.code === 'ECONNECTION') {
-                consoleLog('ERROR', '  └─ Connection failed. Check network/firewall');
+        
+        consoleLog('INFO', `Attempting to send email to ${to}: ${subject}`);
+        
+        const mailOptions = {
+            from: `"TaskWeaver" <${process.env.EMAIL_USER}>`,
+            to: to,
+            subject: subject,
+            html: html,
+            headers: {
+                'X-Priority': '3',
+                'X-Mailer': 'TaskWeaver'
             }
-            throw error;
+        };
+        
+        // Add timeout to prevent hanging
+        const timeout = setTimeout(() => {
+            consoleLog('ERROR', `Email timeout after 30 seconds to ${to}`);
+            reject(new Error('Email sending timeout'));
+        }, 30000);
+        
+        transporter.sendMail(mailOptions, (error, info) => {
+            clearTimeout(timeout);
+            
+            if (error) {
+                consoleLog('ERROR', `Failed to send email to ${to}:`, error.message);
+                consoleLog('ERROR', `Error details:`, error);
+                reject(error);
+            } else {
+                consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject}`);
+                consoleLog('SUCCESS', `  └─ Message ID: ${info.messageId}`);
+                resolve(info);
+            }
         });
+    });
 }
 
 // ============ CORS CONFIGURATION ============
