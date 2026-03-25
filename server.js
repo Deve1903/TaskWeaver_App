@@ -14,6 +14,13 @@ const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const { Parser } = require('json2csv');
 require('dotenv').config();
+// ============ RENDER ENVIRONMENT DETECTION ============
+const isRender = process.env.RENDER === 'true' || 
+                 process.env.RENDER_SERVICE_ID || 
+                 process.env.RENDER_INSTANCE_ID ||
+                 process.env.DATABASE_URL?.includes('render.com');
+
+console.log('\x1b[36m%s\x1b[0m', `🔍 Environment: ${isRender ? 'Render (Production)' : 'Local (Development)'}`);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -145,7 +152,91 @@ app.get('/api/health', async (req, res) => {
         });
     }
 });
-
+// ============ TEST EMAIL ENDPOINT (For Debugging) ============
+app.get('/api/test-email', async (req, res) => {
+    consoleLog('INFO', '📧 Test email endpoint called');
+    
+    if (!transporter) {
+        return res.json({ 
+            success: false, 
+            error: 'Email not configured',
+            render: isRender,
+            port: port,
+            message: 'Email service is not configured. Check your EMAIL_USER and EMAIL_PASS'
+        });
+    }
+    
+    try {
+        const testEmail = process.env.EMAIL_USER;
+        const result = await sendEmail(
+            testEmail,
+            'TaskWeaver Email Test - Render',
+            `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #667eea, #764ba2); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0; }
+                    .content { padding: 20px; background: #f9f9f9; border-radius: 0 0 10px 10px; }
+                    .status { color: #28a745; font-weight: bold; }
+                    .info { background: #e9ecef; padding: 10px; border-radius: 5px; margin: 10px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>⚡ TaskWeaver</h1>
+                        <p>Email Test Successful!</p>
+                    </div>
+                    <div class="content">
+                        <h2>✅ Your email configuration is working!</h2>
+                        <p>This email was sent from <strong>TaskWeaver</strong> running on <strong>Render</strong>.</p>
+                        <div class="info">
+                            <strong>Test Details:</strong><br>
+                            Environment: ${isRender ? 'Render (Production)' : 'Local (Development)'}<br>
+                            Server Port: ${port}<br>
+                            Email User: ${process.env.EMAIL_USER}<br>
+                            Timestamp: ${new Date().toLocaleString()}
+                        </div>
+                        <p>Your TaskWeaver email notifications are now active!</p>
+                        <hr>
+                        <small>TaskWeaver - Weaving Productivity into Your Life</small>
+                    </div>
+                </div>
+            </body>
+            </html>
+            `
+        );
+        
+        if (result.success) {
+            res.json({ 
+                success: true, 
+                message: 'Test email sent successfully! Check your inbox.',
+                details: {
+                    environment: isRender ? 'Render' : 'Local',
+                    port: port,
+                    emailTo: testEmail,
+                    messageId: result.messageId
+                }
+            });
+        } else {
+            res.json({ 
+                success: false, 
+                error: result.error,
+                message: 'Failed to send test email'
+            });
+        }
+    } catch (error) {
+        consoleLog('ERROR', 'Test email failed:', error.message);
+        res.json({ 
+            success: false, 
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+});
 // ============ CORS CONFIGURATION ============
 const allowedOrigins = [
     'http://localhost:3000',
@@ -334,6 +425,34 @@ async function initializeDatabase() {
         `);
         consoleLog('SUCCESS', 'Reminders table ready');
         
+        // ============ DATABASE TRIGGER - ADDED HERE ============
+        // Create trigger to prevent invalid reminder timestamps
+        try {
+            await client.query(`
+                CREATE OR REPLACE FUNCTION validate_reminder_time()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    IF NEW.reminder_time IS NULL OR NEW.reminder_time = '' OR NEW.reminder_time::text = 'null' THEN
+                        NEW.reminder_time = NOW();
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            `);
+            
+            await client.query(`
+                DROP TRIGGER IF EXISTS ensure_valid_reminder_time ON reminders;
+                CREATE TRIGGER ensure_valid_reminder_time
+                    BEFORE INSERT OR UPDATE ON reminders
+                    FOR EACH ROW
+                    EXECUTE FUNCTION validate_reminder_time();
+            `);
+            consoleLog('SUCCESS', 'Reminder time validation trigger created');
+        } catch (err) {
+            consoleLog('WARNING', 'Could not create reminder trigger:', err.message);
+        }
+        // ============ END OF DATABASE TRIGGER ============
+        
         // Activity log table
         await client.query(`
             CREATE TABLE IF NOT EXISTS activity_log (
@@ -455,7 +574,35 @@ async function initializeDatabase() {
         client.release();
     }
 }
-
+// ============ CLEANUP INVALID REMINDERS ============
+async function cleanupInvalidReminders() {
+    try {
+        // Delete reminders with invalid timestamps
+        const result = await pool.query(`
+            DELETE FROM reminders 
+            WHERE reminder_time IS NULL 
+            OR reminder_time = '' 
+            OR reminder_time::text = ''
+            OR reminder_time::text = 'null'
+        `);
+        if (result.rowCount > 0) {
+            consoleLog('INFO', `Cleaned up ${result.rowCount} invalid reminders`);
+        }
+        
+        // Also fix any tasks with invalid reminder flags
+        await pool.query(`
+            UPDATE reminders 
+            SET reminder_time = NOW() 
+            WHERE reminder_time IS NULL 
+            AND sent = 0
+        `);
+        
+        return result.rowCount;
+    } catch (err) {
+        consoleLog('WARNING', 'Could not clean up invalid reminders:', err.message);
+        return 0;
+    }
+}
 // ============ EMAIL TRANSPORTER ============
 let transporter = null;
 
@@ -473,30 +620,108 @@ function setupEmailTransporter() {
         return;
     }
     
+    // Remove spaces from App Password (critical for Render)
+    const emailPass = process.env.EMAIL_PASS.replace(/\s/g, '');
+    const emailUser = process.env.EMAIL_USER;
+    
+    // Detect if running on Render
+    const isRender = process.env.RENDER === 'true' || 
+                     process.env.RENDER_SERVICE_ID || 
+                     process.env.RENDER_INSTANCE_ID ||
+                     process.env.DATABASE_URL?.includes('render.com');
+    
     try {
-        transporter = nodemailer.createTransport({
+        // Use explicit SMTP settings for better Render compatibility
+        const smtpConfig = isRender ? {
+            host: 'smtp.gmail.com',
+            port: 465,  // Use 465 for Render (port 587 often blocked)
+            secure: true,
+            auth: { 
+                user: emailUser, 
+                pass: emailPass 
+            },
+            tls: {
+                rejectUnauthorized: false,
+                ciphers: 'SSLv3'
+            },
+            connectionTimeout: 30000,
+            greetingTimeout: 30000,
+            socketTimeout: 30000,
+            debug: false
+        } : {
             service: 'gmail',
             auth: { 
-                user: process.env.EMAIL_USER, 
-                pass: process.env.EMAIL_PASS 
+                user: emailUser, 
+                pass: emailPass 
             },
             debug: false
-        });
+        };
+        
+        transporter = nodemailer.createTransport(smtpConfig);
         
         // Verify connection and show status
         transporter.verify((error, success) => {
             if (error) {
                 consoleLog('ERROR', '✗ Email server connection FAILED:', error.message);
-                consoleLog('ERROR', '  └─ Check your EMAIL_USER and EMAIL_PASS in .env file');
-                transporter = null;
+                if (isRender) {
+                    consoleLog('INFO', '  └─ Render detected - trying alternative configuration...');
+                    setupAlternativeForRender();
+                } else {
+                    consoleLog('ERROR', '  └─ Check your EMAIL_USER and EMAIL_PASS in .env file');
+                    consoleLog('INFO', '  └─ For Gmail, use an App Password (not your regular password)');
+                    transporter = null;
+                }
             } else {
                 consoleLog('SUCCESS', '✓ Email server CONNECTED and READY');
-                consoleLog('SUCCESS', `  └─ Using email: ${process.env.EMAIL_USER}`);
+                consoleLog('SUCCESS', `  └─ Using email: ${emailUser}`);
                 consoleLog('SUCCESS', `  └─ Service: Gmail (SMTP)`);
+                if (isRender) {
+                    consoleLog('SUCCESS', `  └─ Render mode: Port ${smtpConfig.port}`);
+                }
             }
         });
     } catch (error) {
         consoleLog('ERROR', 'Failed to setup email transporter:', error.message);
+        if (isRender) {
+            setupAlternativeForRender();
+        } else {
+            transporter = null;
+        }
+    }
+}
+
+function setupAlternativeForRender() {
+    try {
+        const emailPass = process.env.EMAIL_PASS.replace(/\s/g, '');
+        const emailUser = process.env.EMAIL_USER;
+        
+        // Alternative configuration using service mode for Render
+        transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: emailUser,
+                pass: emailPass
+            },
+            tls: {
+                rejectUnauthorized: false
+            },
+            connectionTimeout: 30000,
+            socketTimeout: 30000
+        });
+        
+        transporter.verify((error) => {
+            if (error) {
+                consoleLog('ERROR', '✗ Alternative config also failed:', error.message);
+                consoleLog('WARNING', '⚠️ Email notifications will be disabled on Render');
+                consoleLog('INFO', '  └─ Consider using SendGrid as an alternative');
+                transporter = null;
+            } else {
+                consoleLog('SUCCESS', '✓ Email connected with alternative configuration');
+                consoleLog('SUCCESS', `  └─ Using email: ${emailUser}`);
+            }
+        });
+    } catch (error) {
+        consoleLog('ERROR', 'Failed to setup alternative email:', error.message);
         transporter = null;
     }
 }
@@ -509,18 +734,31 @@ function sendEmail(to, subject, html) {
     
     consoleLog('INFO', `Sending email to ${to}: ${subject}`);
     
-    return transporter.sendMail({
-        from: process.env.EMAIL_USER,
+    const mailOptions = {
+        from: `"TaskWeaver" <${process.env.EMAIL_USER}>`,
         to: to,
         subject: subject,
-        html: html
-    }).then(info => {
-        consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject} (Message ID: ${info.messageId})`);
-        return info;
-    }).catch(error => {
-        consoleLog('ERROR', `✗ Failed to send email to ${to}:`, error.message);
-        throw error;
-    });
+        html: html,
+        headers: {
+            'X-Priority': '3',
+            'X-Mailer': 'TaskWeaver'
+        }
+    };
+    
+    return transporter.sendMail(mailOptions)
+        .then(info => {
+            consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject} (Message ID: ${info.messageId})`);
+            return info;
+        })
+        .catch(error => {
+            consoleLog('ERROR', `✗ Failed to send email to ${to}:`, error.message);
+            if (error.code === 'EAUTH') {
+                consoleLog('ERROR', '  └─ Authentication failed. Use App Password for Gmail');
+            } else if (error.code === 'ECONNECTION') {
+                consoleLog('ERROR', '  └─ Connection failed. Check network/firewall');
+            }
+            throw error;
+        });
 }
 
 function getEmailTemplate(title, content, buttonText = null, buttonLink = null) {
@@ -1504,12 +1742,16 @@ async function checkScheduledReminders() {
     }
     
     try {
+        // Safety check - only get reminders with valid timestamps
         const result = await pool.query(`
             SELECT r.*, t.title, t.description, t.user_id, t.user_email, u.email_notifications
             FROM reminders r
             JOIN tasks t ON r.task_id = t.id
             JOIN users u ON r.user_id = u.id
             WHERE r.reminder_time <= NOW()
+            AND r.reminder_time IS NOT NULL
+            AND r.reminder_time != ''
+            AND r.reminder_time::text != 'null'
             AND r.sent = 0
             AND u.email_notifications = 1
             AND t.completed = 0
@@ -1522,6 +1764,15 @@ async function checkScheduledReminders() {
         }
         
         for (const reminder of reminders) {
+            // Additional safety check for each reminder
+            if (!reminder.reminder_time) {
+                consoleLog('WARNING', `Skipping reminder ${reminder.id}: invalid timestamp`);
+                // Mark as sent to avoid repeated errors
+                await pool.query('UPDATE reminders SET sent = 1, last_error = $1 WHERE id = $2', 
+                    ['Invalid timestamp skipped', reminder.id]);
+                continue;
+            }
+            
             const emailContent = getEmailTemplate(
                 `Reminder: ${reminder.title}`,
                 `<div class="info-box">
@@ -1563,6 +1814,7 @@ async function checkDeadlineReminders() {
             JOIN users u ON t.user_id = u.id
             WHERE t.completed = 0 
             AND t.deadline IS NOT NULL
+            AND t.deadline != ''
             AND t.deadline_reminder_sent = 0
             AND u.email_notifications = 1
             AND EXTRACT(EPOCH FROM (t.deadline - NOW())) / 3600 <= 24
@@ -1570,6 +1822,8 @@ async function checkDeadlineReminders() {
         `);
         
         for (const task of result.rows) {
+            if (!task.deadline) continue;
+            
             const deadline = new Date(task.deadline);
             const hoursLeft = Math.ceil((deadline - new Date()) / (1000 * 3600));
             const emailContent = getEmailTemplate(
@@ -1612,12 +1866,15 @@ async function checkOverdueTasks() {
             JOIN users u ON t.user_id = u.id
             WHERE t.completed = 0 
             AND t.deadline IS NOT NULL
+            AND t.deadline != ''
             AND t.deadline < NOW()
             AND t.overdue_reminder_sent = 0
             AND u.email_notifications = 1
         `);
         
         for (const task of result.rows) {
+            if (!task.deadline) continue;
+            
             const deadline = new Date(task.deadline);
             const daysOverdue = Math.floor((new Date() - deadline) / (1000 * 3600 * 24));
             const emailContent = getEmailTemplate(
@@ -1650,22 +1907,21 @@ async function checkOverdueTasks() {
     }
 }
 
-// Schedule reminders
-cron.schedule('* * * * *', () => { checkScheduledReminders(); });
-cron.schedule('*/30 * * * *', () => { checkDeadlineReminders(); checkOverdueTasks(); });
-
-// Daily cleanup
-cron.schedule('0 2 * * *', async () => {
-    consoleLog('INFO', 'Running daily cleanup...');
+// Schedule reminders with error handling
+cron.schedule('* * * * *', () => { 
     try {
-        const result1 = await pool.query("DELETE FROM activity_log WHERE created_at < NOW() - INTERVAL '90 days'");
-        const result2 = await pool.query("DELETE FROM reminders WHERE created_at < NOW() - INTERVAL '30 days'");
-        const result3 = await pool.query("DELETE FROM email_log WHERE created_at < NOW() - INTERVAL '180 days'");
-        const result4 = await pool.query("DELETE FROM suggestions WHERE created_at < NOW() - INTERVAL '30 days' AND is_read = 1");
-        const result5 = await pool.query("DELETE FROM shared_schedules WHERE expires_at < NOW()");
-        consoleLog('SUCCESS', `Cleanup complete: ${result1.rowCount} activities, ${result2.rowCount} reminders, ${result3.rowCount} emails, ${result4.rowCount} suggestions, ${result5.rowCount} shares`);
+        checkScheduledReminders();
     } catch (err) {
-        consoleLog('ERROR', 'Cleanup error:', err.message);
+        consoleLog('ERROR', 'Scheduled reminder cron error:', err.message);
+    }
+});
+
+cron.schedule('*/30 * * * *', () => { 
+    try {
+        checkDeadlineReminders(); 
+        checkOverdueTasks();
+    } catch (err) {
+        consoleLog('ERROR', 'Deadline reminder cron error:', err.message);
     }
 });
 
@@ -1685,13 +1941,17 @@ app.use((req, res) => {
 async function startServer() {
     try {
         await initializeDatabase();
+        
+        // Clean up any invalid reminders
+        await cleanupInvalidReminders();
+        
         setupEmailTransporter();
         
         app.listen(port, '0.0.0.0', () => {
             consoleLog('SUCCESS', `\n╔══════════════════════════════════════════════════════════════╗`);
             consoleLog('SUCCESS', `║                    🚀 TASKWEAVER SERVER 🚀                      ║`);
             consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
-            consoleLog('SUCCESS', `║  Port: ${port.padEnd(55)}║`);
+            consoleLog('SUCCESS', `║  Port: ${port.toString().padEnd(55)}║`);
             consoleLog('SUCCESS', `║  Database: ${dbConnected ? '✓ CONNECTED'.padEnd(52) : '✗ DISCONNECTED'.padEnd(52)}║`);
             consoleLog('SUCCESS', `║  Email: ${transporter ? '✓ CONNECTED & READY'.padEnd(52) : '✗ NOT CONFIGURED'.padEnd(52)}║`);
             if (transporter) {
@@ -1727,5 +1987,4 @@ async function startServer() {
         process.exit(1);
     }
 }
-
 startServer();
