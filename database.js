@@ -1,5 +1,4 @@
 const { Pool } = require('pg');
-const path = require('path');
 const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
@@ -15,7 +14,7 @@ const pool = new Pool({
 // Test database connection
 pool.connect((err, client, release) => {
   if (err) {
-    console.error('❌ Error connecting to PostgreSQL:', err);
+    console.error('❌ Error connecting to PostgreSQL:', err.message);
   } else {
     console.log('✅ Connected to PostgreSQL database');
     release();
@@ -224,30 +223,16 @@ async function initializeDatabase() {
     ];
 
     for (const index of indexes) {
-      await client.query(index);
+      await client.query(index).catch(() => {});
     }
     console.log('✅ All indexes created successfully');
 
     // Create demo user if not exists
-    await createDemoUser(client);
-
-  } catch (err) {
-    console.error('❌ Database initialization error:', err);
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
-async function createDemoUser(client) {
-  try {
     const demoEmail = 'demo@taskweaver.com';
-    const demoPassword = 'Demo@2024';
-    
     const existingDemo = await client.query('SELECT id FROM users WHERE email = $1', [demoEmail]);
     
     if (existingDemo.rows.length === 0) {
-      const hashedPassword = await bcrypt.hash(demoPassword, 10);
+      const hashedPassword = await bcrypt.hash('Demo@2024', 10);
       await client.query(
         `INSERT INTO users (username, email, password, email_notifications, push_notifications, timezone, theme, email_verified) 
          VALUES ($1, $2, $3, 1, 1, 'UTC', 'light', 1)`,
@@ -257,8 +242,14 @@ async function createDemoUser(client) {
     } else {
       console.log('ℹ️ Demo user already exists');
     }
+
+    console.log('✅ Database initialization complete');
+
   } catch (err) {
-    console.error('Error creating demo user:', err);
+    console.error('❌ Database initialization error:', err.message);
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
@@ -270,7 +261,7 @@ const dbHelpers = {
       const result = await pool.query(text, params);
       return result;
     } catch (err) {
-      console.error('Database query error:', err);
+      console.error('Database query error:', err.message);
       throw err;
     }
   },
@@ -385,24 +376,104 @@ const dbHelpers = {
     return result.rows[0];
   },
   
+  // Projects helpers
+  getProjectsByUser: async (userId) => {
+    const result = await pool.query(
+      "SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
+    return result.rows;
+  },
+  
+  createProject: async (userId, userEmail, name, description, color, status, progress, startDate, endDate) => {
+    const result = await pool.query(
+      `INSERT INTO projects (user_id, user_email, name, description, color, status, progress, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [userId, userEmail, name, description, color, status || 'active', progress || 0, startDate, endDate]
+    );
+    return result.rows[0].id;
+  },
+  
+  updateProject: async (id, userId, updates) => {
+    const fields = [];
+    const values = [];
+    let paramCounter = 1;
+    
+    if (updates.name !== undefined) { fields.push(`name = $${paramCounter++}`); values.push(updates.name); }
+    if (updates.description !== undefined) { fields.push(`description = $${paramCounter++}`); values.push(updates.description); }
+    if (updates.color !== undefined) { fields.push(`color = $${paramCounter++}`); values.push(updates.color); }
+    if (updates.status !== undefined) { fields.push(`status = $${paramCounter++}`); values.push(updates.status); }
+    if (updates.progress !== undefined) { fields.push(`progress = $${paramCounter++}`); values.push(updates.progress); }
+    if (updates.start_date !== undefined) { fields.push(`start_date = $${paramCounter++}`); values.push(updates.start_date); }
+    if (updates.end_date !== undefined) { fields.push(`end_date = $${paramCounter++}`); values.push(updates.end_date); }
+    
+    if (fields.length === 0) return false;
+    
+    fields.push(`updated_at = NOW()`);
+    values.push(id, userId);
+    
+    const query = `UPDATE projects SET ${fields.join(', ')} WHERE id = $${paramCounter++} AND user_id = $${paramCounter}`;
+    const result = await pool.query(query, values);
+    return result.rowCount > 0;
+  },
+  
+  deleteProject: async (id, userId) => {
+    const result = await pool.query("DELETE FROM projects WHERE id = $1 AND user_id = $2", [id, userId]);
+    return result.rowCount > 0;
+  },
+  
+  // Suggestions helpers
+  getSuggestions: async (userId, limit = 10) => {
+    const result = await pool.query(
+      "SELECT * FROM suggestions WHERE user_id = $1 AND is_read = 0 ORDER BY priority DESC, created_at ASC LIMIT $2",
+      [userId, limit]
+    );
+    return result.rows;
+  },
+  
+  addSuggestion: async (userId, userEmail, suggestion, type, priority = 0) => {
+    const result = await pool.query(
+      `INSERT INTO suggestions (user_id, user_email, suggestion, type, priority) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [userId, userEmail, suggestion, type, priority]
+    );
+    return result.rows[0].id;
+  },
+  
+  markSuggestionRead: async (suggestionId, userId) => {
+    await pool.query(
+      "UPDATE suggestions SET is_read = 1, read_at = NOW() WHERE id = $1 AND user_id = $2",
+      [suggestionId, userId]
+    );
+  },
+  
+  // Share schedule helpers
+  createShareLink: async (userId, userEmail, shareWithEmail, shareToken, shareType, expiresAt) => {
+    const result = await pool.query(
+      `INSERT INTO shared_schedules (user_id, user_email, share_with_email, share_token, share_type, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [userId, userEmail, shareWithEmail, shareToken, shareType, expiresAt]
+    );
+    return result.rows[0].id;
+  },
+  
+  getSharedSchedule: async (token) => {
+    const result = await pool.query(
+      "SELECT * FROM shared_schedules WHERE share_token = $1 AND expires_at > NOW()",
+      [token]
+    );
+    return result.rows[0];
+  },
+  
   // Cleanup old data
   cleanupOldData: async () => {
-    // Delete old reminders (older than 30 days)
     const reminderResult = await pool.query("DELETE FROM reminders WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '30 days'");
-    console.log(`Cleaned up ${reminderResult.rowCount} old reminders`);
-    
-    // Delete old activity logs (older than 90 days)
     const activityResult = await pool.query("DELETE FROM activity_log WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '90 days'");
-    console.log(`Cleaned up ${activityResult.rowCount} old activity logs`);
-    
-    // Delete old email logs (older than 180 days)
     const emailResult = await pool.query("DELETE FROM email_log WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '180 days'");
-    console.log(`Cleaned up ${emailResult.rowCount} old email logs`);
-    
-    // Delete expired shared schedules
+    const suggestionResult = await pool.query("DELETE FROM suggestions WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '30 days' AND is_read = 1");
     const shareResult = await pool.query("DELETE FROM shared_schedules WHERE expires_at < CURRENT_TIMESTAMP");
-    console.log(`Cleaned up ${shareResult.rowCount} expired shared schedules`);
     
+    console.log(`Cleaned up: ${reminderResult.rowCount} reminders, ${activityResult.rowCount} activities, ${emailResult.rowCount} emails, ${suggestionResult.rowCount} suggestions, ${shareResult.rowCount} shares`);
     return true;
   },
   

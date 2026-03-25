@@ -1,13 +1,13 @@
 const express = require('express');
-const { Pool } = require('pg');  
+const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const cron = require('node-cron');
-const bcrypt = require('bcryptjs'); 
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);  
+const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
@@ -18,7 +18,7 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ============ DATABASE CONNECTION (PostgreSQL) ============
+// ============ DATABASE CONNECTION (PostgreSQL with retry) ============
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -26,20 +26,38 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 });
-// Test database connection
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Database connection error:', err.stack);
-  } else {
-    console.log('✅ PostgreSQL database connected successfully');
-    release();
+
+let dbConnected = false;
+let retryCount = 0;
+const maxRetries = 5;
+
+async function connectWithRetry() {
+  while (retryCount < maxRetries && !dbConnected) {
+    try {
+      await pool.query('SELECT 1');
+      dbConnected = true;
+      console.log('✅ PostgreSQL database connected successfully');
+      return true;
+    } catch (err) {
+      retryCount++;
+      console.log(`Database connection attempt ${retryCount}/${maxRetries} failed: ${err.message}`);
+      if (retryCount < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
   }
-});
+  if (!dbConnected) {
+    console.error('❌ Failed to connect to database after multiple attempts');
+  }
+  return dbConnected;
+}
+
+connectWithRetry();
 
 // ============ LOGGING SYSTEM ============
 const LOG_DIR = path.join(__dirname, 'logs');
 if (!fs.existsSync(LOG_DIR)) {
-    fs.mkdirSync(LOG_DIR);
+    fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
 const errorLogStream = fs.createWriteStream(path.join(LOG_DIR, 'error.log'), { flags: 'a' });
@@ -59,13 +77,15 @@ function logToFile(stream, level, message, data = null) {
 }
 
 async function logUserActivity(userId, email, action, details, req = null) {
+    if (!dbConnected) return;
+    
     const logData = {
         userId, email, action, details,
         ip: req?.ip || req?.connection?.remoteAddress || 'unknown',
         userAgent: req?.headers['user-agent'] || 'unknown',
         method: req?.method, url: req?.originalUrl
     };
-    logToFile(activityLogStream, 'ACTIVITY', `User ${email} (ID: ${userId}): ${action}`, logData);
+    logToFile(activityLogStream, 'ACTIVITY', `User ${email}: ${action}`, logData);
     console.log(`\x1b[36m[USER ACTIVITY] ${email}: ${action}\x1b[0m`);
     
     try {
@@ -75,33 +95,38 @@ async function logUserActivity(userId, email, action, details, req = null) {
             [userId, email, action, details, logData.ip, logData.userAgent, logData.method, logData.url]
         );
     } catch (err) {
-        logToFile(errorLogStream, 'ERROR', 'Failed to log activity to DB', err);
+        logToFile(errorLogStream, 'ERROR', 'Failed to log activity', err);
     }
 }
 
 async function logEmailSent(userId, email, to, subject, status, error = null) {
-    logToFile(emailLogStream, 'EMAIL', `Email sent to ${to}: ${subject} - ${status}`, { userId, email, to, subject, status, error: error?.message });
+    logToFile(emailLogStream, 'EMAIL', `Email to ${to}: ${subject} - ${status}`, { userId, email, to, subject, status });
     console.log(`\x1b[33m[EMAIL] ${email} -> ${to}: ${subject} - ${status}\x1b[0m`);
+    
+    if (!dbConnected) return;
     
     try {
         await pool.query(
-            `INSERT INTO email_log (user_id, user_email, recipient, subject, status, error_message) VALUES ($1, $2, $3, $4, $5, $6)`,
+            `INSERT INTO email_log (user_id, user_email, recipient, subject, status, error_message) 
+             VALUES ($1, $2, $3, $4, $5, $6)`,
             [userId, email, to, subject, status, error?.message]
         );
     } catch (err) {
-        logToFile(errorLogStream, 'ERROR', 'Failed to log email to DB', err);
+        logToFile(errorLogStream, 'ERROR', 'Failed to log email', err);
     }
 }
 
 // ============ HEALTH CHECK ============
 app.get('/api/health', async (req, res) => {
     try {
+        if (!dbConnected) await connectWithRetry();
         await pool.query('SELECT 1');
         res.json({ 
             status: 'healthy', 
             database: 'connected',
             uptime: process.uptime(),
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            environment: process.env.NODE_ENV
         });
     } catch (err) {
         res.status(500).json({ 
@@ -114,24 +139,32 @@ app.get('/api/health', async (req, res) => {
 
 // ============ CORS CONFIGURATION ============
 const allowedOrigins = [
-    'http://localhost:3000', 'http://localhost:5500', 'http://localhost:5501',
-    'http://127.0.0.1:3000', 'http://127.0.0.1:5500', 'http://127.0.0.1:5501',
-    'https://taskweaver.onrender.com', 'https://*.onrender.com'
+    'http://localhost:3000',
+    'http://localhost:5500',
+    'http://localhost:5501',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5500',
+    'http://127.0.0.1:5501',
+    'https://taskweaver.onrender.com',
+    'https://taskweaver-app.onrender.com'
 ];
 
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-            callback(null, true);
-        } else {
-            logToFile(errorLogStream, 'WARNING', `CORS blocked request from: ${origin}`);
-            callback(new Error('Not allowed by CORS'));
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            return callback(null, true);
         }
+        if (process.env.NODE_ENV === 'production' && origin && origin.includes('onrender.com')) {
+            return callback(null, true);
+        }
+        console.log(`CORS blocked: ${origin}`);
+        logToFile(errorLogStream, 'WARNING', `CORS blocked request from: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cookie']
 }));
 
 app.options('*', cors());
@@ -145,6 +178,7 @@ app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.
 app.get('/login', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.get('/index.html', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 app.get('/login.html', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'login.html')); });
+app.get('/reset-password.html', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'reset-password.html')); });
 
 // ============ SESSION CONFIGURATION ============
 app.use(session({
@@ -153,7 +187,7 @@ app.use(session({
         tableName: 'session',
         createTableIfMissing: true,
     }),
-    secret: process.env.SESSION_SECRET || 'taskweaver_secret_key_2024',
+    secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
     resave: false,
     saveUninitialized: false,
     cookie: { 
@@ -358,27 +392,34 @@ async function initializeDatabase() {
         console.log('✅ Projects table ready');
         
         // Create indexes
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_user_email ON tasks(user_email)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_start ON tasks(scheduled_start)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_reminders_reminder_time ON reminders(reminder_time)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_activity_user_id ON activity_log(user_id)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_activity_email ON activity_log(email)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_shared_schedules_user_email ON shared_schedules(user_email)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_shared_schedules_token ON shared_schedules(share_token)`);
+        const indexes = [
+            'CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_user_email ON tasks(user_email)',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_start ON tasks(scheduled_start)',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed)',
+            'CREATE INDEX IF NOT EXISTS idx_reminders_reminder_time ON reminders(reminder_time)',
+            'CREATE INDEX IF NOT EXISTS idx_reminders_sent ON reminders(sent)',
+            'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
+            'CREATE INDEX IF NOT EXISTS idx_activity_user_id ON activity_log(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_activity_email ON activity_log(email)',
+            'CREATE INDEX IF NOT EXISTS idx_email_log_recipient ON email_log(recipient)',
+            'CREATE INDEX IF NOT EXISTS idx_suggestions_user_id ON suggestions(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_shared_schedules_user_email ON shared_schedules(user_email)',
+            'CREATE INDEX IF NOT EXISTS idx_shared_schedules_token ON shared_schedules(share_token)'
+        ];
         
+        for (const index of indexes) {
+            await client.query(index).catch(() => {});
+        }
         console.log('✅ All indexes created successfully');
         
         // Create demo user
         const demoEmail = 'demo@taskweaver.com';
-        const demoPassword = 'Demo@2024';
-        
         const existingDemo = await client.query('SELECT id FROM users WHERE email = $1', [demoEmail]);
         if (existingDemo.rows.length === 0) {
-            const hashedPassword = await bcrypt.hash(demoPassword, 10);
+            const hashedPassword = await bcrypt.hash('Demo@2024', 10);
             await client.query(
                 `INSERT INTO users (username, email, password, email_notifications, push_notifications, timezone, theme, email_verified) 
                  VALUES ($1, $2, $3, 1, 1, 'UTC', 'light', 1)`,
@@ -389,8 +430,10 @@ async function initializeDatabase() {
             console.log('ℹ️ Demo user already exists');
         }
         
+        console.log('✅ Database initialization complete');
+        
     } catch (err) {
-        console.error('❌ Database initialization error:', err);
+        console.error('❌ Database initialization error:', err.message);
         throw err;
     } finally {
         client.release();
@@ -398,144 +441,61 @@ async function initializeDatabase() {
 }
 
 // ============ EMAIL TRANSPORTER ============
-let transporter;
+let transporter = null;
 
 function setupEmailTransporter() {
-    try {
-        transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER || 'your-email@gmail.com', pass: process.env.EMAIL_PASS || 'your-app-password' }
-        });
-        transporter.verify((error) => {
-            if (error) logToFile(errorLogStream, 'ERROR', 'Email configuration error', error);
-            else logToFile(activityLogStream, 'SUCCESS', 'Email server is ready');
-        });
-    } catch (error) {
-        logToFile(errorLogStream, 'ERROR', 'Failed to setup email transporter', error);
-        transporter = null;
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS && 
+        process.env.EMAIL_USER !== 'your-email@gmail.com') {
+        try {
+            transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+            });
+            transporter.verify((error) => {
+                if (error) console.log('⚠️ Email verification failed:', error.message);
+                else console.log('✅ Email server ready');
+            });
+        } catch (error) {
+            console.log('⚠️ Email setup failed:', error.message);
+            transporter = null;
+        }
+    } else {
+        console.log('⚠️ Email not configured - using demo mode');
     }
 }
 
-// Professional email template with TaskWeaver branding
+// Professional email template
 function getEmailTemplate(title, content, buttonText = null, buttonLink = null) {
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>TaskWeaver</title>
-            <style>
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    line-height: 1.6;
-                    margin: 0;
-                    padding: 0;
-                    background-color: #f7fafc;
-                }
-                .container {
-                    max-width: 600px;
-                    margin: 20px auto;
-                    background: #ffffff;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                }
-                .header {
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    padding: 30px 20px;
-                    text-align: center;
-                }
-                .header h1 {
-                    color: #ffffff;
-                    margin: 0;
-                    font-size: 28px;
-                    font-weight: 700;
-                    letter-spacing: -0.5px;
-                }
-                .header p {
-                    color: rgba(255, 255, 255, 0.9);
-                    margin: 10px 0 0;
-                    font-size: 14px;
-                }
-                .content {
-                    padding: 40px 30px;
-                    background: #ffffff;
-                }
-                .title {
-                    color: #2d3748;
-                    font-size: 24px;
-                    font-weight: 600;
-                    margin-bottom: 20px;
-                    border-left: 4px solid #667eea;
-                    padding-left: 15px;
-                }
-                .message {
-                    color: #4a5568;
-                    font-size: 16px;
-                    margin-bottom: 30px;
-                    line-height: 1.8;
-                }
-                .button {
-                    display: inline-block;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: #ffffff;
-                    padding: 12px 30px;
-                    text-decoration: none;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    margin: 20px 0;
-                    transition: transform 0.2s;
-                }
-                .button:hover {
-                    transform: translateY(-2px);
-                }
-                .info-box {
-                    background: #f7fafc;
-                    border-left: 4px solid #667eea;
-                    padding: 15px 20px;
-                    margin: 20px 0;
-                    border-radius: 8px;
-                }
-                .footer {
-                    background: #f7fafc;
-                    padding: 20px 30px;
-                    text-align: center;
-                    border-top: 1px solid #e2e8f0;
-                    font-size: 12px;
-                    color: #718096;
-                }
-                .footer a {
-                    color: #667eea;
-                    text-decoration: none;
-                }
-                hr {
-                    border: none;
-                    border-top: 1px solid #e2e8f0;
-                    margin: 20px 0;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>⚡ TaskWeaver</h1>
-                    <p>Your Intelligent Task Management Solution</p>
-                </div>
-                <div class="content">
-                    <div class="title">${title}</div>
-                    <div class="message">${content}</div>
-                    ${buttonText && buttonLink ? `<div style="text-align: center;"><a href="${buttonLink}" class="button">${buttonText}</a></div>` : ''}
-                </div>
-                <div class="footer">
-                    <p>© 2024 TaskWeaver. All rights reserved.</p>
-                    <p>Made with <span style="color: #667eea;">❤️</span> for better productivity</p>
-                    <p><a href="#">Privacy Policy</a> | <a href="#">Terms of Service</a></p>
-                </div>
-            </div>
-        </body>
-        </html>
-    `;
+    return `<!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"><title>TaskWeaver</title>
+    <style>
+        body{font-family:'Segoe UI',Arial,sans-serif;background:#f7fafc;margin:0;padding:20px}
+        .container{max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1)}
+        .header{background:linear-gradient(135deg,#667eea,#764ba2);padding:30px;text-align:center}
+        .header h1{color:#fff;margin:0;font-size:28px}
+        .header p{color:rgba(255,255,255,0.9);margin:10px 0 0}
+        .content{padding:40px}
+        .title{font-size:24px;font-weight:bold;color:#2d3748;margin-bottom:20px;border-left:4px solid #667eea;padding-left:15px}
+        .message{color:#4a5568;line-height:1.6}
+        .info-box{background:#f7fafc;border-left:4px solid #667eea;padding:15px;margin:20px 0;border-radius:8px}
+        .button{display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:12px 30px;text-decoration:none;border-radius:8px;margin:20px 0;font-weight:600}
+        .footer{background:#f7fafc;padding:20px;text-align:center;font-size:12px;color:#718096}
+        hr{border:none;border-top:1px solid #e2e8f0;margin:20px 0}
+    </style>
+    </head>
+    <body>
+    <div class="container">
+        <div class="header"><h1>⚡ TaskWeaver</h1><p>Your Intelligent Task Management Solution</p></div>
+        <div class="content">
+            <div class="title">${title}</div>
+            <div class="message">${content}</div>
+            ${buttonText && buttonLink ? `<div style="text-align:center"><a href="${buttonLink}" class="button">${buttonText}</a></div>` : ''}
+        </div>
+        <div class="footer"><p>© 2024 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
+    </div>
+    </body>
+    </html>`;
 }
 
 // ============ EXPORT FUNCTIONS ============
@@ -543,74 +503,32 @@ async function generatePDF(tasks, userEmail) {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ margin: 50, size: 'A4' });
         const buffers = [];
-        
         doc.on('data', buffers.push.bind(buffers));
-        doc.on('end', () => {
-            const pdfData = Buffer.concat(buffers);
-            resolve(pdfData);
-        });
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
         doc.on('error', reject);
         
         doc.rect(0, 0, doc.page.width, 100).fill('#667eea');
-        doc.fillColor('#ffffff')
-           .fontSize(28)
-           .font('Helvetica-Bold')
-           .text('TaskWeaver', 50, 35);
-        doc.fontSize(14)
-           .font('Helvetica')
-           .text('Schedule Report', 50, 70);
-        
-        doc.fillColor('#2d3748')
-           .fontSize(12)
-           .text(`Generated for: ${userEmail}`, 50, 120);
+        doc.fillColor('#fff').fontSize(28).font('Helvetica-Bold').text('TaskWeaver', 50, 35);
+        doc.fontSize(14).font('Helvetica').text('Schedule Report', 50, 70);
+        doc.fillColor('#2d3748').fontSize(12).text(`Generated for: ${userEmail}`, 50, 120);
         doc.text(`Generated on: ${new Date().toLocaleString()}`, 50, 140);
         
-        let yPos = 180;
-        
-        tasks.forEach((task) => {
-            if (yPos > doc.page.height - 150) {
-                doc.addPage();
-                yPos = 50;
-            }
-            
-            doc.rect(50, yPos - 10, doc.page.width - 100, 100)
-               .fill('#f7fafc');
-            
-            let priorityColor = '#48bb78';
-            if (task.severity === 'High') priorityColor = '#ed8936';
-            if (task.severity === 'Critical') priorityColor = '#f56565';
-            
-            doc.rect(50, yPos - 10, 5, 100).fill(priorityColor);
-            
-            doc.fillColor('#2d3748')
-               .fontSize(14)
-               .font('Helvetica-Bold')
-               .text(task.title, 65, yPos);
-            
-            doc.fontSize(10)
-               .font('Helvetica')
-               .fillColor('#4a5568');
-            
+        let y = 180;
+        tasks.forEach(task => {
+            if (y > doc.page.height - 150) { doc.addPage(); y = 50; }
+            let color = task.severity === 'Critical' ? '#f56565' : task.severity === 'High' ? '#ed8936' : '#48bb78';
+            doc.rect(50, y - 10, doc.page.width - 100, 100).fill('#f7fafc');
+            doc.rect(50, y - 10, 5, 100).fill(color);
+            doc.fillColor('#2d3748').fontSize(14).font('Helvetica-Bold').text(task.title, 65, y);
+            doc.fontSize(10).font('Helvetica').fillColor('#4a5568');
             let details = [];
             if (task.description) details.push(`📝 ${task.description.substring(0, 100)}`);
             if (task.project) details.push(`📁 Project: ${task.project}`);
             if (task.scheduled_start) details.push(`⏰ ${new Date(task.scheduled_start).toLocaleString()}`);
             if (task.deadline) details.push(`⏰ Deadline: ${new Date(task.deadline).toLocaleString()}`);
-            if (task.completed) details.push(`✅ Completed: ${task.completed_at ? new Date(task.completed_at).toLocaleString() : 'Yes'}`);
-            
-            doc.text(details.join(' • '), 65, yPos + 20);
-            
-            yPos += 110;
+            doc.text(details.join(' • '), 65, y + 20);
+            y += 110;
         });
-        
-        const totalPages = doc.bufferedPageRange().count;
-        for (let i = 0; i < totalPages; i++) {
-            doc.switchToPage(i);
-            doc.fillColor('#a0aec0')
-               .fontSize(10)
-               .text(`Page ${i + 1} of ${totalPages}`, doc.page.width - 100, doc.page.height - 30, { align: 'right' });
-        }
-        
         doc.end();
     });
 }
@@ -618,33 +536,26 @@ async function generatePDF(tasks, userEmail) {
 async function generateExcel(tasks) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'TaskWeaver';
-    workbook.created = new Date();
-    
     const worksheet = workbook.addWorksheet('Schedule Report');
-    
     worksheet.columns = [
         { header: 'Task Title', key: 'title', width: 30 },
         { header: 'Description', key: 'description', width: 40 },
         { header: 'Project', key: 'project', width: 20 },
+        { header: 'Category', key: 'category', width: 15 },
         { header: 'Severity', key: 'severity', width: 12 },
         { header: 'Scheduled Start', key: 'scheduled_start', width: 20 },
         { header: 'Deadline', key: 'deadline', width: 20 },
         { header: 'Completed', key: 'completed', width: 12 },
         { header: 'Tags', key: 'tags', width: 20 }
     ];
-    
     worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    worksheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF667EEA' }
-    };
-    
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF667EEA' } };
     tasks.forEach(task => {
         worksheet.addRow({
             title: task.title,
             description: task.description || '',
             project: task.project || '',
+            category: task.category || '',
             severity: task.severity || 'Medium',
             scheduled_start: task.scheduled_start ? new Date(task.scheduled_start).toLocaleString() : '',
             deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
@@ -652,23 +563,18 @@ async function generateExcel(tasks) {
             tags: task.tags || ''
         });
     });
-    
-    const buffer = await workbook.xlsx.writeBuffer();
-    return buffer;
+    return await workbook.xlsx.writeBuffer();
 }
 
 function generateCSV(tasks) {
-    const fields = ['title', 'description', 'project', 'severity', 'scheduled_start', 'deadline', 'completed', 'tags'];
-    const opts = { fields };
-    const parser = new Parser(opts);
-    
+    const fields = ['title', 'description', 'project', 'category', 'severity', 'scheduled_start', 'deadline', 'completed', 'tags'];
+    const parser = new Parser({ fields });
     const formattedTasks = tasks.map(task => ({
         ...task,
         scheduled_start: task.scheduled_start ? new Date(task.scheduled_start).toLocaleString() : '',
         deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
         completed: task.completed ? 'Yes' : 'No'
     }));
-    
     return parser.parse(formattedTasks);
 }
 
@@ -676,11 +582,10 @@ function generateCSV(tasks) {
 async function generateUsername(email) {
     let base = email.split('@')[0].replace(/[^a-zA-Z]/g, '').toUpperCase();
     if (base.length < 3) base = base + 'USER';
-    
     let attempt = 0;
     while (true) {
         let username = base + (attempt > 0 ? attempt : '');
-        const result = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+        const result = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
         if (result.rows.length === 0) return username;
         attempt++;
     }
@@ -689,37 +594,44 @@ async function generateUsername(email) {
 function checkPasswordStrength(password) {
     let score = 0;
     if (!password) return { score: 0, strength: 'No Password', color: '#6c757d', width: '0%' };
-    if (password.length >= 8) score += 1;
-    if (password.length >= 12) score += 1;
-    if (/[A-Z]/.test(password)) score += 1;
-    if (/[0-9]/.test(password)) score += 1;
-    if (/[^A-Za-z0-9]/.test(password)) score += 1;
-    
-    let strength = score <= 2 ? 'Weak' : (score === 3 || score === 4) ? 'Medium' : 'Strong';
-    let color = score <= 2 ? '#dc3545' : (score === 3 || score === 4) ? '#ffc107' : '#28a745';
+    if (password.length >= 8) score++;
+    if (password.length >= 12) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+    let strength = score <= 2 ? 'Weak' : score <= 4 ? 'Medium' : 'Strong';
+    let color = score <= 2 ? '#dc3545' : score <= 4 ? '#ffc107' : '#28a745';
     return { score, strength, color, width: `${(score / 5) * 100}%` };
 }
 
 function requireAuth(req, res, next) {
-    if (!req.session.userId) {
+    if (!req.session?.userId) {
         return res.status(401).json({ error: 'Authentication required' });
     }
     next();
 }
 
 // ============ AUTHENTICATION ROUTES ============
+app.post('/api/check-password-strength', (req, res) => {
+    try {
+        res.json(checkPasswordStrength(req.body.password));
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to check password' });
+    }
+});
+
 app.post('/api/register', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
     
     const strength = checkPasswordStrength(password);
     if (strength.score < 3) {
-        return res.status(400).json({ error: 'Password too weak. Use at least 8 characters with uppercase, numbers, and special characters.' });
+        return res.status(400).json({ error: 'Password too weak. Use 8+ chars with uppercase, numbers, and special characters.' });
     }
     
     try {
-        const existingUser = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
-        if (existingUser.rows.length > 0) {
+        const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (existing.rows.length > 0) {
             return res.status(400).json({ error: 'Email already registered' });
         }
         
@@ -741,7 +653,7 @@ app.post('/api/register', async (req, res) => {
             const emailContent = getEmailTemplate(
                 'Welcome to TaskWeaver! 🎉',
                 `Hi ${username},<br><br>Thank you for joining TaskWeaver! We're excited to help you manage your tasks more efficiently.<br><br>
-                Please verify your email address by clicking the button below. This helps us ensure the security of your account.<br><br>
+                Please verify your email address by clicking the button below.<br><br>
                 <div class="info-box">
                     <strong>Your Account Details:</strong><br>
                     Email: ${email}<br>
@@ -750,54 +662,41 @@ app.post('/api/register', async (req, res) => {
                 'Verify Email Address',
                 verificationLink
             );
-            
-            try {
-                await transporter.sendMail({
-                    from: process.env.EMAIL_USER,
-                    to: email,
-                    subject: '🎉 Welcome to TaskWeaver - Verify Your Email',
-                    html: emailContent
-                });
-                await logEmailSent(userId, email, email, 'Welcome Email', 'success');
-                console.log(`\x1b[32m[EMAIL] Welcome email sent to: ${email}\x1b[0m`);
-            } catch (error) {
-                await logEmailSent(userId, email, email, 'Welcome Email', 'failed', error);
-                console.log(`\x1b[31m[EMAIL] Failed to send welcome email to: ${email}\x1b[0m`);
-            }
+            transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: email,
+                subject: '🎉 Welcome to TaskWeaver - Verify Your Email',
+                html: emailContent
+            }).catch(error => console.log('Email send failed:', error.message));
         }
         
         await logUserActivity(userId, email, 'REGISTER', 'User registered successfully', req);
         res.json({ success: true, username, email, message: 'Registration successful! Please check your email to verify your account.' });
     } catch (err) {
-        console.error('Registration error:', err);
-        res.status(500).json({ error: err.message });
+        console.error('Registration error:', err.message);
+        res.status(500).json({ error: 'Registration failed' });
     }
 });
 
 app.get('/api/verify-email', async (req, res) => {
     const { token } = req.query;
-    
     try {
-        const user = await pool.query("SELECT id, email FROM users WHERE verification_token = $1", [token]);
-        if (user.rows.length === 0) {
-            return res.redirect('/login.html?error=invalid_verification_token');
+        const result = await pool.query('UPDATE users SET email_verified = 1, verification_token = NULL WHERE verification_token = $1 RETURNING id', [token]);
+        if (result.rows.length > 0) {
+            res.redirect('/login.html?verified=true');
+        } else {
+            res.redirect('/login.html?error=invalid_token');
         }
-        
-        await pool.query("UPDATE users SET email_verified = 1, verification_token = NULL WHERE id = $1", [user.rows[0].id]);
-        console.log(`\x1b[32m[VERIFICATION] Email verified: ${user.rows[0].email}\x1b[0m`);
-        res.redirect('/login.html?verified=true');
-    } catch (err) {
+    } catch {
         res.redirect('/login.html?error=verification_failed');
     }
 });
 
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
-    
     try {
-        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         const user = result.rows[0];
-        
         if (!user) return res.status(401).json({ error: 'Invalid credentials' });
         
         console.log(`\x1b[36m[LOGIN ATTEMPT] User: ${email}\x1b[0m`);
@@ -807,16 +706,13 @@ app.post('/api/login', async (req, res) => {
             return res.status(401).json({ error: 'Account is temporarily locked. Try again later.' });
         }
         
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
-            const failedAttempts = (user.failed_login_attempts || 0) + 1;
-            let lockedUntil = null;
-            if (failedAttempts >= 5) lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
-            await pool.query(
-                `UPDATE users SET failed_login_attempts = $1, last_failed_login = $2, locked_until = $3 WHERE id = $4`,
-                [failedAttempts, new Date().toISOString(), lockedUntil, user.id]
-            );
-            console.log(`\x1b[31m[LOGIN] Failed attempt for: ${email} (Attempt ${failedAttempts}/5)\x1b[0m`);
+        const valid = await bcrypt.compare(password, user.password);
+        if (!valid) {
+            const attempts = (user.failed_login_attempts || 0) + 1;
+            const locked = attempts >= 5 ? new Date(Date.now() + 15 * 60000) : null;
+            await pool.query('UPDATE users SET failed_login_attempts = $1, last_failed_login = $2, locked_until = $3 WHERE id = $4', 
+                [attempts, new Date().toISOString(), locked, user.id]);
+            console.log(`\x1b[31m[LOGIN] Failed attempt for: ${email} (Attempt ${attempts}/5)\x1b[0m`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
@@ -836,12 +732,9 @@ app.post('/api/login', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session error' });
             }
-            
             console.log(`\x1b[32m[LOGIN] Successful login: ${email} (ID: ${user.id})\x1b[0m`);
             console.log(`\x1b[36m[SESSION] Session ID: ${req.sessionID}\x1b[0m`);
-            
             logUserActivity(user.id, user.email, 'LOGIN', 'User logged in', req);
-            
             res.json({ 
                 success: true, 
                 username: user.username,
@@ -852,17 +745,16 @@ app.post('/api/login', async (req, res) => {
             });
         });
     } catch (err) {
-        console.error('Login error:', err);
-        res.status(500).json({ error: err.message });
+        console.error('Login error:', err.message);
+        res.status(500).json({ error: 'Login failed' });
     }
 });
 
 app.get('/api/check-session', async (req, res) => {
     console.log(`\x1b[36m[SESSION CHECK] Session ID: ${req.sessionID}\x1b[0m`);
-    
-    if (req.session && req.session.userId) {
+    if (req.session?.userId) {
         try {
-            const result = await pool.query("SELECT email, username FROM users WHERE id = $1", [req.session.userId]);
+            const result = await pool.query('SELECT email, username FROM users WHERE id = $1', [req.session.userId]);
             const user = result.rows[0];
             console.log(`\x1b[32m[SESSION CHECK] Valid session for: ${user?.email}\x1b[0m`);
             res.json({ 
@@ -872,8 +764,7 @@ app.get('/api/check-session', async (req, res) => {
                 email: user?.email || req.session.email
             });
         } catch (err) {
-            console.error('Error fetching user:', err);
-            res.status(500).json({ error: err.message });
+            res.json({ authenticated: true, username: req.session.username, email: req.session.email });
         }
     } else {
         console.log(`\x1b[33m[SESSION CHECK] No active session\x1b[0m`);
@@ -886,47 +777,30 @@ app.post('/api/logout', (req, res) => {
         console.log(`\x1b[36m[LOGOUT] User: ${req.session.email}\x1b[0m`);
         logUserActivity(req.session.userId, req.session.email, 'LOGOUT', 'User logged out', req);
     }
-    req.session.destroy((err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, message: 'Logged out successfully' });
-    });
+    req.session.destroy(() => res.json({ success: true }));
 });
 
 app.post('/api/forgot-password', async (req, res) => {
     const { email } = req.body;
-    
     try {
-        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-        const user = result.rows[0];
+        const user = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (user.rows.length === 0) return res.status(404).json({ error: 'Email not found' });
         
-        if (!user) return res.status(404).json({ error: 'Email not found' });
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiry = new Date(Date.now() + 3600000);
+        await pool.query('UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE id = $3', [token, expiry, user.rows[0].id]);
         
-        const resetToken = crypto.randomBytes(32).toString('hex');
-        const resetExpiry = new Date(Date.now() + 3600000);
-        
-        await pool.query(
-            "UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE id = $3",
-            [resetToken, resetExpiry.toISOString(), user.id]
-        );
-        
-        const resetLink = `https://${req.get('host')}/reset-password.html?token=${resetToken}`;
+        const resetLink = `https://${req.get('host')}/reset-password.html?token=${token}`;
         if (transporter) {
-            try {
-                await transporter.sendMail({
-                    from: process.env.EMAIL_USER,
-                    to: email,
-                    subject: 'Password Reset - TaskWeaver',
-                    html: `<div><h2>Password Reset</h2><p>Click <a href="${resetLink}">here</a> to reset your password.</p><p>This link expires in 1 hour.</p></div>`
-                });
-                await logEmailSent(user.id, email, email, 'Password Reset', 'success');
-                res.json({ success: true, message: 'Password reset email sent' });
-            } catch (error) {
-                await logEmailSent(user.id, email, email, 'Password Reset', 'failed', error);
-                res.status(500).json({ error: 'Failed to send email' });
-            }
-        } else {
-            res.json({ success: true, message: 'Reset link would be sent: ' + resetLink });
+            transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: email,
+                subject: 'Password Reset - TaskWeaver',
+                html: getEmailTemplate('Password Reset', 'Click the button below to reset your password. This link expires in 1 hour.', 'Reset Password', resetLink)
+            }).catch(() => {});
+            await logEmailSent(user.rows[0].id, email, email, 'Password Reset', 'success');
         }
+        res.json({ success: true, message: 'Password reset email sent' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -938,21 +812,12 @@ app.post('/api/reset-password', async (req, res) => {
     if (strength.score < 3) return res.status(400).json({ error: 'Password too weak.' });
     
     try {
-        const result = await pool.query(
-            "SELECT * FROM users WHERE reset_token = $1 AND reset_token_expiry > $2",
-            [token, new Date().toISOString()]
-        );
-        const user = result.rows[0];
+        const user = await pool.query('SELECT id FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()', [token]);
+        if (user.rows.length === 0) return res.status(400).json({ error: 'Invalid or expired token' });
         
-        if (!user) return res.status(400).json({ error: 'Invalid or expired token' });
-        
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await pool.query(
-            "UPDATE users SET password = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2",
-            [hashedPassword, user.id]
-        );
-        
-        await logUserActivity(user.id, user.email, 'PASSWORD_RESET', 'Password reset successfully', req);
+        const hashed = await bcrypt.hash(newPassword, 10);
+        await pool.query('UPDATE users SET password = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2', [hashed, user.rows[0].id]);
+        await logUserActivity(user.rows[0].id, user.rows[0].email, 'PASSWORD_RESET', 'Password reset successfully', req);
         res.json({ success: true, message: 'Password reset successful' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -963,7 +828,7 @@ app.post('/api/reset-password', async (req, res) => {
 app.get('/api/settings', requireAuth, async (req, res) => {
     try {
         const result = await pool.query(
-            "SELECT reminder_interval, auto_reminders, email_notifications, push_notifications, timezone, theme FROM users WHERE id = $1",
+            'SELECT reminder_interval, auto_reminders, email_notifications, push_notifications, timezone, theme FROM users WHERE id = $1',
             [req.session.userId]
         );
         const user = result.rows[0];
@@ -1000,7 +865,7 @@ app.put('/api/settings', requireAuth, async (req, res) => {
     
     try {
         await pool.query(query, values);
-        await logUserActivity(req.session.userId, req.session.email, 'SETTINGS_UPDATED', `Settings updated`, req);
+        await logUserActivity(req.session.userId, req.session.email, 'SETTINGS_UPDATED', 'Settings updated', req);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1013,11 +878,49 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
         const result = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND (deleted_at IS NULL OR deleted_at = '') 
              ORDER BY CASE severity 
-                WHEN 'Critical' THEN 1 
-                WHEN 'High' THEN 2 
-                WHEN 'Medium' THEN 3 
-                WHEN 'Low' THEN 4 
+                WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 
              END, deadline ASC NULLS LAST, scheduled_start ASC NULLS LAST`,
+            [req.session.userId]
+        );
+        res.json(result.rows || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/unscheduled-tasks', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM tasks WHERE user_id = $1 AND (scheduled_start IS NULL OR scheduled_start = '') 
+             AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '')
+             ORDER BY CASE severity WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 END,
+             deadline ASC NULLS LAST`,
+            [req.session.userId]
+        );
+        res.json(result.rows || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/upcoming-deadlines', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND deadline IS NOT NULL 
+             AND deadline >= NOW() ORDER BY deadline ASC LIMIT 10`,
+            [req.session.userId]
+        );
+        res.json(result.rows || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/overdue-tasks', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND deadline IS NOT NULL 
+             AND deadline < NOW() ORDER BY deadline ASC`,
             [req.session.userId]
         );
         res.json(result.rows || []);
@@ -1032,9 +935,12 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     
     try {
         const result = await pool.query(
-            `INSERT INTO tasks (user_id, user_email, title, description, project, category, severity, priority, deadline, is_recurring, recurrence_pattern, scheduled_start, scheduled_end, estimated_duration, tags)
+            `INSERT INTO tasks (user_id, user_email, title, description, project, category, severity, priority, deadline, 
+              is_recurring, recurrence_pattern, scheduled_start, scheduled_end, estimated_duration, tags)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
-            [req.session.userId, req.session.email, title, description || null, project || null, category || null, severity || 'Medium', priority || 2, deadline || null, is_recurring ? 1 : 0, recurrence_pattern || null, scheduled_start || null, scheduled_end || null, estimated_duration || null, tags || null]
+            [req.session.userId, req.session.email, title, description || null, project || null, category || null, 
+             severity || 'Medium', priority || 2, deadline || null, is_recurring ? 1 : 0, recurrence_pattern || null, 
+             scheduled_start || null, scheduled_end || null, estimated_duration || null, tags || null]
         );
         
         const taskId = result.rows[0].id;
@@ -1051,6 +957,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         await logUserActivity(req.session.userId, req.session.email, 'TASK_CREATED', `Task: ${title}`, req);
         res.json({ id: taskId, message: 'Task created successfully' });
     } catch (err) {
+        console.error('Task creation error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1098,13 +1005,107 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
 
 app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
     try {
-        const taskResult = await pool.query("SELECT title FROM tasks WHERE id = $1 AND user_id = $2", [req.params.id, req.session.userId]);
+        const taskResult = await pool.query('SELECT title FROM tasks WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
         const task = taskResult.rows[0];
-        
-        const result = await pool.query("DELETE FROM tasks WHERE id = $1 AND user_id = $2", [req.params.id, req.session.userId]);
-        
+        const result = await pool.query('DELETE FROM tasks WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
         if (task) await logUserActivity(req.session.userId, req.session.email, 'TASK_DELETED', `Task: ${task.title}`, req);
         res.json({ deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============ SUGGESTIONS ============
+app.get('/api/suggestions', requireAuth, async (req, res) => {
+    try {
+        const suggestions = await pool.query(
+            'SELECT * FROM suggestions WHERE user_id = $1 AND is_read = 0 ORDER BY priority DESC, created_at ASC LIMIT 10',
+            [req.session.userId]
+        );
+        
+        if (suggestions.rows.length === 0) {
+            const tasks = await pool.query(
+                `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND (scheduled_start IS NULL OR scheduled_start = '') 
+                 ORDER BY CASE severity WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 END, 
+                 deadline ASC LIMIT 5`,
+                [req.session.userId]
+            );
+            const suggestionTexts = [];
+            const now = new Date();
+            tasks.rows.forEach(task => {
+                if (task.severity === 'Critical' && task.deadline) {
+                    const hoursLeft = (new Date(task.deadline) - now) / (1000 * 3600);
+                    if (hoursLeft < 24) {
+                        suggestionTexts.push(`⚠️ CRITICAL: "${task.title}" is due in less than ${Math.ceil(hoursLeft)} hours! Schedule it immediately.`);
+                    }
+                }
+            });
+            if (suggestionTexts.length === 0) {
+                suggestionTexts.push("✨ Great job! All tasks are scheduled. Consider planning some personal development time.");
+                suggestionTexts.push("💡 Tip: Use the Focus Timer for 25-minute productivity sprints.");
+            }
+            res.json(suggestionTexts.slice(0, 5));
+        } else {
+            res.json(suggestions.rows.map(s => s.suggestion));
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============ PROJECTS ============
+app.get('/api/projects', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC', [req.session.userId]);
+        if (result.rows.length === 0) {
+            res.json([
+                { name: 'FHC Portal', status: 'active', progress: 65, color: '#6B46C1', description: 'Full-stack web portal' },
+                { name: 'Customer Repair App', status: 'active', progress: 40, color: '#48BB78', description: 'Mobile repair tracking' },
+                { name: 'Paint Tracks', status: 'active', progress: 80, color: '#F6AD55', description: 'Project management tool' }
+            ]);
+        } else {
+            res.json(result.rows);
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/projects', requireAuth, async (req, res) => {
+    const { name, description, color, status, progress, start_date, end_date } = req.body;
+    if (!name) return res.status(400).json({ error: 'Project name required' });
+    
+    try {
+        const result = await pool.query(
+            `INSERT INTO projects (user_id, user_email, name, description, color, status, progress, start_date, end_date)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+            [req.session.userId, req.session.email, name, description, color, status || 'active', progress || 0, start_date, end_date]
+        );
+        res.json({ id: result.rows[0].id, message: 'Project created' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/projects/:id', requireAuth, async (req, res) => {
+    const { name, description, color, status, progress, start_date, end_date } = req.body;
+    try {
+        await pool.query(
+            `UPDATE projects SET name = COALESCE($1, name), description = COALESCE($2, description), color = COALESCE($3, color),
+             status = COALESCE($4, status), progress = COALESCE($5, progress), start_date = COALESCE($6, start_date),
+             end_date = COALESCE($7, end_date), updated_at = NOW() WHERE id = $8 AND user_id = $9`,
+            [name, description, color, status, progress, start_date, end_date, req.params.id, req.session.userId]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/projects/:id', requireAuth, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1121,7 +1122,7 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
     }
     
     try {
-        const recipientResult = await pool.query("SELECT id, email FROM users WHERE email = $1", [shareWithEmail]);
+        const recipientResult = await pool.query('SELECT id, email FROM users WHERE email = $1', [shareWithEmail]);
         if (recipientResult.rows.length === 0) {
             return res.status(404).json({ error: 'Recipient email not found in TaskWeaver' });
         }
@@ -1165,40 +1166,22 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
         );
         
         if (transporter) {
-            try {
-                await transporter.sendMail({
-                    from: process.env.EMAIL_USER,
-                    to: shareWithEmail,
-                    subject: `📅 Schedule Shared with You - TaskWeaver`,
-                    html: emailContent,
-                    attachments: [
-                        {
-                            filename: `schedule_${userEmail.replace('@', '_')}.pdf`,
-                            content: pdfBuffer,
-                            contentType: 'application/pdf'
-                        },
-                        {
-                            filename: `schedule_${userEmail.replace('@', '_')}.xlsx`,
-                            content: excelBuffer,
-                            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                        },
-                        {
-                            filename: `schedule_${userEmail.replace('@', '_')}.csv`,
-                            content: csvData,
-                            contentType: 'text/csv'
-                        }
-                    ]
-                });
-                await logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'success');
-                console.log(`\x1b[32m[SHARE] Schedule shared from ${userEmail} to ${shareWithEmail}\x1b[0m`);
-                res.json({ success: true, message: `Schedule shared with ${shareWithEmail}` });
-            } catch (error) {
-                await logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'failed', error);
-                res.status(500).json({ error: 'Failed to send share email' });
-            }
-        } else {
-            res.json({ success: true, shareLink, message: 'Share link generated (email not configured)' });
+            transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: shareWithEmail,
+                subject: `📅 Schedule Shared with You - TaskWeaver`,
+                html: emailContent,
+                attachments: [
+                    { filename: `schedule_${userEmail.replace('@', '_')}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
+                    { filename: `schedule_${userEmail.replace('@', '_')}.xlsx`, content: excelBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+                    { filename: `schedule_${userEmail.replace('@', '_')}.csv`, content: csvData, contentType: 'text/csv' }
+                ]
+            }).catch(error => console.log('Share email failed:', error.message));
+            await logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'success');
         }
+        
+        console.log(`\x1b[32m[SHARE] Schedule shared from ${userEmail} to ${shareWithEmail}\x1b[0m`);
+        res.json({ success: true, message: `Schedule shared with ${shareWithEmail}` });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1209,7 +1192,7 @@ app.get('/api/view-shared-schedule', async (req, res) => {
     
     try {
         const shareResult = await pool.query(
-            `SELECT * FROM shared_schedules WHERE share_token = $1 AND expires_at > NOW()`,
+            'SELECT * FROM shared_schedules WHERE share_token = $1 AND expires_at > NOW()',
             [token]
         );
         const share = shareResult.rows[0];
@@ -1297,11 +1280,11 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
     }
 });
 
-// ============ ADDITIONAL ENDPOINTS ============
+// ============ STATISTICS ============
 app.get('/api/user-stats', requireAuth, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT 
+        const result = await pool.query(`
+            SELECT 
                 COUNT(CASE WHEN completed = 1 THEN 1 END) as completed_tasks,
                 COUNT(CASE WHEN completed = 0 AND scheduled_start IS NOT NULL AND scheduled_start != '' AND (deleted_at IS NULL OR deleted_at = '') THEN 1 END) as scheduled_tasks,
                 COUNT(CASE WHEN completed = 0 AND (scheduled_start IS NULL OR scheduled_start = '') AND (deleted_at IS NULL OR deleted_at = '') THEN 1 END) as unscheduled_tasks,
@@ -1318,8 +1301,50 @@ app.get('/api/user-stats', requireAuth, async (req, res) => {
     }
 });
 
+app.get('/api/activity', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM activity_log WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+            [req.session.userId]
+        );
+        res.json(result.rows || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/debug', async (req, res) => {
+    try {
+        const users = await pool.query('SELECT COUNT(*) FROM users');
+        const tasks = await pool.query('SELECT COUNT(*) FROM tasks');
+        const projects = await pool.query('SELECT COUNT(*) FROM projects');
+        const reminders = await pool.query('SELECT COUNT(*) FROM reminders');
+        const tables = await pool.query(`
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public' ORDER BY table_name
+        `);
+        
+        res.json({
+            status: 'ok',
+            database: 'connected',
+            userCount: parseInt(users.rows[0].count),
+            taskCount: parseInt(tasks.rows[0].count),
+            projectCount: parseInt(projects.rows[0].count),
+            reminderCount: parseInt(reminders.rows[0].count),
+            tables: tables.rows.map(t => t.table_name),
+            environment: process.env.NODE_ENV,
+            port: port,
+            nodeVersion: process.version
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message, databaseConnected: false });
+    }
+});
+
 // ============ REMINDER SYSTEM ============
 async function checkScheduledReminders() {
+    if (!dbConnected || !transporter) return;
+    
     try {
         const result = await pool.query(`
             SELECT r.*, t.title, t.description, t.user_id, t.user_email, u.email_notifications
@@ -1336,45 +1361,149 @@ async function checkScheduledReminders() {
         const reminders = result.rows;
         
         for (const reminder of reminders) {
-            if (transporter) {
-                const emailContent = getEmailTemplate(
-                    `Reminder: ${reminder.title}`,
-                    `<div class="info-box">
-                        <strong>Task Details:</strong><br>
-                        Title: ${reminder.title}<br>
-                        ${reminder.description ? `Description: ${reminder.description}<br>` : ''}
-                        Reminder Time: ${new Date(reminder.reminder_time).toLocaleString()}<br>
-                        ${reminder.scheduled_start ? `Scheduled: ${new Date(reminder.scheduled_start).toLocaleString()}<br>` : ''}
-                    </div>
-                    <hr>
-                    <p>Stay focused and complete your task on time! 💪</p>`
-                );
-                
-                transporter.sendMail({
-                    from: process.env.EMAIL_USER,
-                    to: reminder.user_email,
-                    subject: `🔔 Task Reminder: ${reminder.title}`,
-                    html: emailContent
-                }, async (error) => {
-                    if (!error) {
-                        await pool.query("UPDATE reminders SET sent = 1, sent_at = NOW() WHERE id = $1", [reminder.id]);
-                        await logEmailSent(reminder.user_id, reminder.user_email, reminder.user_email, `Reminder: ${reminder.title}`, 'success');
-                        await pool.query("UPDATE tasks SET reminder_count = reminder_count + 1, last_reminder_sent = NOW() WHERE id = $1", [reminder.task_id]);
-                        console.log(`\x1b[32m[REMINDER] Sent to ${reminder.user_email}: ${reminder.title}\x1b[0m`);
-                    } else {
-                        await logEmailSent(reminder.user_id, reminder.user_email, reminder.user_email, `Reminder: ${reminder.title}`, 'failed', error);
-                        await pool.query("UPDATE reminders SET retry_count = retry_count + 1, last_error = $1 WHERE id = $2", [error.message, reminder.id]);
-                    }
-                });
-            }
+            const emailContent = getEmailTemplate(
+                `Reminder: ${reminder.title}`,
+                `<div class="info-box">
+                    <strong>Task Details:</strong><br>
+                    Title: ${reminder.title}<br>
+                    ${reminder.description ? `Description: ${reminder.description}<br>` : ''}
+                    Reminder Time: ${new Date(reminder.reminder_time).toLocaleString()}<br>
+                    ${reminder.scheduled_start ? `Scheduled: ${new Date(reminder.scheduled_start).toLocaleString()}<br>` : ''}
+                </div>
+                <hr>
+                <p>Stay focused and complete your task on time! 💪</p>`
+            );
+            
+            transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: reminder.user_email,
+                subject: `🔔 Task Reminder: ${reminder.title}`,
+                html: emailContent
+            }, async (error) => {
+                if (!error) {
+                    await pool.query('UPDATE reminders SET sent = 1, sent_at = NOW() WHERE id = $1', [reminder.id]);
+                    await logEmailSent(reminder.user_id, reminder.user_email, reminder.user_email, `Reminder: ${reminder.title}`, 'success');
+                    await pool.query('UPDATE tasks SET reminder_count = reminder_count + 1, last_reminder_sent = NOW() WHERE id = $1', [reminder.task_id]);
+                    console.log(`\x1b[32m[REMINDER] Sent to ${reminder.user_email}: ${reminder.title}\x1b[0m`);
+                } else {
+                    await logEmailSent(reminder.user_id, reminder.user_email, reminder.user_email, `Reminder: ${reminder.title}`, 'failed', error);
+                    await pool.query('UPDATE reminders SET retry_count = retry_count + 1, last_error = $1 WHERE id = $2', [error.message, reminder.id]);
+                }
+            });
         }
     } catch (err) {
         logToFile(errorLogStream, 'ERROR', 'Error checking reminders', err);
     }
 }
 
+async function checkDeadlineReminders() {
+    if (!dbConnected || !transporter) return;
+    
+    try {
+        const result = await pool.query(`
+            SELECT t.*, u.email as user_email, u.email_notifications
+            FROM tasks t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.completed = 0 
+            AND t.deadline IS NOT NULL
+            AND t.deadline_reminder_sent = 0
+            AND u.email_notifications = 1
+            AND EXTRACT(EPOCH FROM (t.deadline - NOW())) / 3600 <= 24
+            AND t.deadline > NOW()
+        `);
+        
+        for (const task of result.rows) {
+            const deadline = new Date(task.deadline);
+            const hoursLeft = Math.ceil((deadline - new Date()) / (1000 * 3600));
+            const emailContent = getEmailTemplate(
+                `⚠️ Deadline Approaching: ${task.title}`,
+                `<div class="info-box" style="border-left-color: #f56565;">
+                    <strong>Urgent Task Reminder</strong><br>
+                    Title: ${task.title}<br>
+                    Deadline: ${deadline.toLocaleString()}<br>
+                    Time Remaining: ${hoursLeft} hours<br>
+                    Priority: ${task.severity}<br>
+                    ${task.project ? `Project: ${task.project}<br>` : ''}
+                </div>
+                <hr>
+                <p>Don't forget to complete this task before the deadline! 🚀</p>`
+            );
+            
+            transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: task.user_email,
+                subject: `⚠️ DEADLINE APPROACHING: ${task.title}`,
+                html: emailContent
+            }, async (error) => {
+                if (!error) {
+                    await pool.query('UPDATE tasks SET deadline_reminder_sent = 1 WHERE id = $1', [task.id]);
+                    await logEmailSent(task.user_id, task.user_email, task.user_email, `Deadline: ${task.title}`, 'success');
+                    console.log(`\x1b[33m[DEADLINE] Reminder sent to ${task.user_email}: ${task.title} due in ${hoursLeft}h\x1b[0m`);
+                } else {
+                    await logEmailSent(task.user_id, task.user_email, task.user_email, `Deadline: ${task.title}`, 'failed', error);
+                }
+            });
+        }
+    } catch (err) {
+        logToFile(errorLogStream, 'ERROR', 'Error checking deadline reminders', err);
+    }
+}
+
+async function checkOverdueTasks() {
+    if (!dbConnected || !transporter) return;
+    
+    try {
+        const result = await pool.query(`
+            SELECT t.*, u.email as user_email, u.email_notifications
+            FROM tasks t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.completed = 0 
+            AND t.deadline IS NOT NULL
+            AND t.deadline < NOW()
+            AND t.overdue_reminder_sent = 0
+            AND u.email_notifications = 1
+        `);
+        
+        for (const task of result.rows) {
+            const deadline = new Date(task.deadline);
+            const daysOverdue = Math.floor((new Date() - deadline) / (1000 * 3600 * 24));
+            const emailContent = getEmailTemplate(
+                `⚠️ OVERDUE TASK: ${task.title}`,
+                `<div class="info-box" style="border-left-color: #f56565;">
+                    <strong>Overdue Task Alert</strong><br>
+                    Title: ${task.title}<br>
+                    Original Deadline: ${deadline.toLocaleString()}<br>
+                    Days Overdue: ${daysOverdue}<br>
+                    Priority: ${task.severity}<br>
+                    ${task.project ? `Project: ${task.project}<br>` : ''}
+                </div>
+                <hr>
+                <p>Please address this overdue task as soon as possible! ⚠️</p>`
+            );
+            
+            transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: task.user_email,
+                subject: `⚠️ OVERDUE TASK: ${task.title}`,
+                html: emailContent
+            }, async (error) => {
+                if (!error) {
+                    await pool.query('UPDATE tasks SET overdue_reminder_sent = 1 WHERE id = $1', [task.id]);
+                    await logEmailSent(task.user_id, task.user_email, task.user_email, `Overdue: ${task.title}`, 'success');
+                    console.log(`\x1b[31m[OVERDUE] Alert sent to ${task.user_email}: ${task.title} overdue by ${daysOverdue}d\x1b[0m`);
+                } else {
+                    await logEmailSent(task.user_id, task.user_email, task.user_email, `Overdue: ${task.title}`, 'failed', error);
+                }
+            });
+        }
+    } catch (err) {
+        logToFile(errorLogStream, 'ERROR', 'Error checking overdue tasks', err);
+    }
+}
+
 // Schedule reminders
 cron.schedule('* * * * *', () => { checkScheduledReminders(); });
+cron.schedule('*/30 * * * *', () => { checkDeadlineReminders(); checkOverdueTasks(); });
 
 // Daily cleanup
 cron.schedule('0 2 * * *', async () => {
@@ -1406,21 +1535,20 @@ async function startServer() {
         await initializeDatabase();
         setupEmailTransporter();
         
-        app.listen(port, () => {
-            console.log('\x1b[36m%s\x1b[0m', `\n🚀 TaskWeaver server running on http://localhost:${port}`);
-            console.log('\x1b[32m%s\x1b[0m', `📧 Email notifications configured`);
-            console.log('\x1b[32m%s\x1b[0m', `🐘 PostgreSQL database connected`);
-            console.log('\x1b[33m%s\x1b[0m', `⏰ Deadline reminders will be sent for tasks approaching deadlines`);
+        app.listen(port, '0.0.0.0', () => {
+            console.log('\x1b[36m%s\x1b[0m', `\n🚀 TaskWeaver server running on port ${port}`);
+            console.log('\x1b[32m%s\x1b[0m', `📧 Email: ${transporter ? 'configured' : 'demo mode'}`);
+            console.log('\x1b[32m%s\x1b[0m', `🐘 PostgreSQL: ${dbConnected ? 'connected' : 'waiting...'}`);
+            console.log('\x1b[33m%s\x1b[0m', `⏰ Reminder system active (checking every minute)`);
             console.log('\x1b[33m%s\x1b[0m', `📅 Schedule sharing enabled with PDF/Excel/CSV exports`);
-            console.log('\x1b[32m%s\x1b[0m', `\n📝 Default Login: demo@taskweaver.com / Demo@2024`);
+            console.log('\x1b[32m%s\x1b[0m', `\n📝 Demo Login: demo@taskweaver.com / Demo@2024`);
             console.log('\x1b[36m%s\x1b[0m', `🩺 Health check: http://localhost:${port}/api/health\n`);
         });
         
         process.on('SIGTERM', () => { pool.end(() => process.exit(0)); });
         process.on('SIGINT', () => { pool.end(() => process.exit(0)); });
     } catch (error) {
-        logToFile(errorLogStream, 'ERROR', 'Failed to start server', error);
-        console.error('\x1b[31m%s\x1b[0m', 'Failed to start server:', error);
+        console.error('\x1b[31m%s\x1b[0m', 'Failed to start server:', error.message);
         process.exit(1);
     }
 }
