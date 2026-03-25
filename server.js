@@ -656,32 +656,32 @@ async function initializeDatabase() {
         consoleLog('SUCCESS', 'Session table ready');
         
         // Create timestamp validation function
-        await client.query(`
-            CREATE OR REPLACE FUNCTION validate_task_timestamps()
-            RETURNS TRIGGER AS $$
-            BEGIN
-                IF NEW.deadline IS NULL OR NEW.deadline::text = 'null' OR NEW.deadline = '' THEN
-                    NEW.deadline := NULL;
-                END IF;
-                IF NEW.scheduled_start IS NULL OR NEW.scheduled_start::text = 'null' OR NEW.scheduled_start = '' THEN
-                    NEW.scheduled_start := NULL;
-                END IF;
-                IF NEW.scheduled_end IS NULL OR NEW.scheduled_end::text = 'null' OR NEW.scheduled_end = '' THEN
-                    NEW.scheduled_end := NULL;
-                END IF;
-                IF NEW.completed_at IS NULL OR NEW.completed_at::text = 'null' OR NEW.completed_at = '' THEN
-                    NEW.completed_at := NULL;
-                END IF;
-                IF NEW.last_reminder_sent IS NULL OR NEW.last_reminder_sent::text = 'null' OR NEW.last_reminder_sent = '' THEN
-                    NEW.last_reminder_sent := NULL;
-                END IF;
-                IF NEW.recurrence_end_date IS NULL OR NEW.recurrence_end_date::text = 'null' OR NEW.recurrence_end_date = '' THEN
-                    NEW.recurrence_end_date := NULL;
-                END IF;
-                RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql;
-        `);
+       await client.query(`
+    CREATE OR REPLACE FUNCTION validate_task_timestamps()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        IF NEW.deadline IS NULL OR NEW.deadline::text = 'null' OR NEW.deadline = '' THEN
+            NEW.deadline = NULL;
+        END IF;
+        IF NEW.scheduled_start IS NULL OR NEW.scheduled_start::text = 'null' OR NEW.scheduled_start = '' THEN
+            NEW.scheduled_start = NULL;
+        END IF;
+        IF NEW.scheduled_end IS NULL OR NEW.scheduled_end::text = 'null' OR NEW.scheduled_end = '' THEN
+            NEW.scheduled_end = NULL;
+        END IF;
+        IF NEW.completed_at IS NULL OR NEW.completed_at::text = 'null' OR NEW.completed_at = '' THEN
+            NEW.completed_at = NULL;
+        END IF;
+        IF NEW.last_reminder_sent IS NULL OR NEW.last_reminder_sent::text = 'null' OR NEW.last_reminder_sent = '' THEN
+            NEW.last_reminder_sent = NULL;
+        END IF;
+        IF NEW.recurrence_end_date IS NULL OR NEW.recurrence_end_date::text = 'null' OR NEW.recurrence_end_date = '' THEN
+            NEW.recurrence_end_date = NULL;
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+`);
         
         await client.query(`
             DROP TRIGGER IF EXISTS validate_task_timestamps_trigger ON tasks;
@@ -714,30 +714,31 @@ async function initializeDatabase() {
         consoleLog('SUCCESS', 'Timestamp validation triggers created');
         
         // Create indexes
-        const indexes = [
-            'CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)',
-            'CREATE INDEX IF NOT EXISTS idx_tasks_user_email ON tasks(user_email)',
-            'CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_start ON tasks(scheduled_start)',
-            'CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)',
-            'CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed)',
-            'CREATE INDEX IF NOT EXISTS idx_reminders_reminder_time ON reminders(reminder_time)',
-            'CREATE INDEX IF NOT EXISTS idx_reminders_sent ON reminders(sent)',
-            'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
-            'CREATE INDEX IF NOT EXISTS idx_activity_user_id ON activity_log(user_id)',
-            'CREATE INDEX IF NOT EXISTS idx_email_log_recipient ON email_log(recipient)',
-            'CREATE INDEX IF NOT EXISTS idx_suggestions_user_id ON suggestions(user_id)',
-            'CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)',
-            'CREATE INDEX IF NOT EXISTS idx_shared_schedules_user_email ON shared_schedules(user_email)',
-            'CREATE INDEX IF NOT EXISTS idx_shared_schedules_token ON shared_schedules(share_token)'
-        ];
-        
-        for (const index of indexes) {
-            try {
-                await client.query(index);
-            } catch (err) {
-                // Ignore index creation errors
-            }
-        }
+        const indexQueries = [
+    `CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_user_email ON tasks(user_email)`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_start ON tasks(scheduled_start)`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed)`,
+    `CREATE INDEX IF NOT EXISTS idx_reminders_reminder_time ON reminders(reminder_time)`,
+    `CREATE INDEX IF NOT EXISTS idx_reminders_sent ON reminders(sent)`,
+    `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+    `CREATE INDEX IF NOT EXISTS idx_activity_user_id ON activity_log(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_email_log_recipient ON email_log(recipient)`,
+    `CREATE INDEX IF NOT EXISTS idx_suggestions_user_id ON suggestions(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_shared_schedules_user_email ON shared_schedules(user_email)`,
+    `CREATE INDEX IF NOT EXISTS idx_shared_schedules_token ON shared_schedules(share_token)`
+];
+
+for (const query of indexQueries) {
+    try {
+        await client.query(query);
+        consoleLog('SUCCESS', `Index created: ${query.split('ON')[1]?.trim()}`);
+    } catch (err) {
+        consoleLog('WARNING', `Index creation failed: ${err.message}`);
+    }
+}
         consoleLog('SUCCESS', 'All indexes created');
         
         // Fix any existing tasks with empty timestamps
