@@ -498,7 +498,7 @@ async function initializeDatabase() {
         `);
         consoleLog('SUCCESS', 'Users table ready');
         
-        // Tasks table with safe defaults
+        // Tasks table - FIXED: Removed DEFAULT NULL
         await client.query(`
             CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
@@ -510,22 +510,22 @@ async function initializeDatabase() {
                 category TEXT,
                 severity TEXT DEFAULT 'Medium',
                 priority INTEGER DEFAULT 2,
-                deadline TIMESTAMP DEFAULT NULL,
+                deadline TIMESTAMP,
                 is_recurring INTEGER DEFAULT 0,
                 recurrence_pattern TEXT,
-                recurrence_end_date TIMESTAMP DEFAULT NULL,
-                scheduled_start TIMESTAMP DEFAULT NULL,
-                scheduled_end TIMESTAMP DEFAULT NULL,
-                actual_start TIMESTAMP DEFAULT NULL,
-                actual_end TIMESTAMP DEFAULT NULL,
+                recurrence_end_date TIMESTAMP,
+                scheduled_start TIMESTAMP,
+                scheduled_end TIMESTAMP,
+                actual_start TIMESTAMP,
+                actual_end TIMESTAMP,
                 completed INTEGER DEFAULT 0,
-                completed_at TIMESTAMP DEFAULT NULL,
+                completed_at TIMESTAMP,
                 completion_notes TEXT,
                 email_reminder_sent INTEGER DEFAULT 0,
                 deadline_reminder_sent INTEGER DEFAULT 0,
                 overdue_reminder_sent INTEGER DEFAULT 0,
                 reminder_count INTEGER DEFAULT 0,
-                last_reminder_sent TIMESTAMP DEFAULT NULL,
+                last_reminder_sent TIMESTAMP,
                 estimated_duration INTEGER,
                 actual_duration INTEGER,
                 tags TEXT,
@@ -534,7 +534,7 @@ async function initializeDatabase() {
                 dependencies TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                deleted_at TIMESTAMP DEFAULT NULL
+                deleted_at TIMESTAMP
             )
         `);
         consoleLog('SUCCESS', 'Tasks table ready');
@@ -645,28 +645,38 @@ async function initializeDatabase() {
         `);
         consoleLog('SUCCESS', 'Projects table ready');
         
-        // Create timestamp validation triggers
+        // Session table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS session (
+                sid VARCHAR NOT NULL PRIMARY KEY,
+                sess JSON NOT NULL,
+                expire TIMESTAMP NOT NULL
+            )
+        `);
+        consoleLog('SUCCESS', 'Session table ready');
+        
+        // Create timestamp validation function
         await client.query(`
             CREATE OR REPLACE FUNCTION validate_task_timestamps()
             RETURNS TRIGGER AS $$
             BEGIN
-                IF NEW.deadline IS NULL OR NEW.deadline = '' OR NEW.deadline::text = 'null' THEN
-                    NEW.deadline = NULL;
+                IF NEW.deadline IS NULL OR NEW.deadline::text = 'null' OR NEW.deadline = '' THEN
+                    NEW.deadline := NULL;
                 END IF;
-                IF NEW.scheduled_start IS NULL OR NEW.scheduled_start = '' OR NEW.scheduled_start::text = 'null' THEN
-                    NEW.scheduled_start = NULL;
+                IF NEW.scheduled_start IS NULL OR NEW.scheduled_start::text = 'null' OR NEW.scheduled_start = '' THEN
+                    NEW.scheduled_start := NULL;
                 END IF;
-                IF NEW.scheduled_end IS NULL OR NEW.scheduled_end = '' OR NEW.scheduled_end::text = 'null' THEN
-                    NEW.scheduled_end = NULL;
+                IF NEW.scheduled_end IS NULL OR NEW.scheduled_end::text = 'null' OR NEW.scheduled_end = '' THEN
+                    NEW.scheduled_end := NULL;
                 END IF;
-                IF NEW.completed_at IS NULL OR NEW.completed_at = '' OR NEW.completed_at::text = 'null' THEN
-                    NEW.completed_at = NULL;
+                IF NEW.completed_at IS NULL OR NEW.completed_at::text = 'null' OR NEW.completed_at = '' THEN
+                    NEW.completed_at := NULL;
                 END IF;
-                IF NEW.last_reminder_sent IS NULL OR NEW.last_reminder_sent = '' OR NEW.last_reminder_sent::text = 'null' THEN
-                    NEW.last_reminder_sent = NULL;
+                IF NEW.last_reminder_sent IS NULL OR NEW.last_reminder_sent::text = 'null' OR NEW.last_reminder_sent = '' THEN
+                    NEW.last_reminder_sent := NULL;
                 END IF;
-                IF NEW.recurrence_end_date IS NULL OR NEW.recurrence_end_date = '' OR NEW.recurrence_end_date::text = 'null' THEN
-                    NEW.recurrence_end_date = NULL;
+                IF NEW.recurrence_end_date IS NULL OR NEW.recurrence_end_date::text = 'null' OR NEW.recurrence_end_date = '' THEN
+                    NEW.recurrence_end_date := NULL;
                 END IF;
                 RETURN NEW;
             END;
@@ -685,8 +695,8 @@ async function initializeDatabase() {
             CREATE OR REPLACE FUNCTION validate_reminder_time()
             RETURNS TRIGGER AS $$
             BEGIN
-                IF NEW.reminder_time IS NULL OR NEW.reminder_time = '' OR NEW.reminder_time::text = 'null' THEN
-                    NEW.reminder_time = NOW();
+                IF NEW.reminder_time IS NULL OR NEW.reminder_time::text = 'null' OR NEW.reminder_time = '' THEN
+                    NEW.reminder_time := NOW();
                 END IF;
                 RETURN NEW;
             END;
@@ -722,7 +732,11 @@ async function initializeDatabase() {
         ];
         
         for (const index of indexes) {
-            await client.query(index).catch(() => {});
+            try {
+                await client.query(index);
+            } catch (err) {
+                // Ignore index creation errors
+            }
         }
         consoleLog('SUCCESS', 'All indexes created');
         
@@ -732,8 +746,7 @@ async function initializeDatabase() {
                 deadline = NULL WHERE deadline IS NULL OR deadline = '' OR deadline::text = 'null',
                 scheduled_start = NULL WHERE scheduled_start IS NULL OR scheduled_start = '' OR scheduled_start::text = 'null',
                 scheduled_end = NULL WHERE scheduled_end IS NULL OR scheduled_end = '' OR scheduled_end::text = 'null',
-                completed_at = NULL WHERE completed_at IS NULL OR completed_at = '' OR completed_at::text = 'null',
-                last_reminder_sent = NULL WHERE last_reminder_sent IS NULL OR last_reminder_sent = '' OR last_reminder_sent::text = 'null'
+                completed_at = NULL WHERE completed_at IS NULL OR completed_at = '' OR completed_at::text = 'null'
         `);
         
         // Create demo user
