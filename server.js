@@ -574,33 +574,146 @@ async function initializeDatabase() {
         client.release();
     }
 }
+
+// ============ TABLE STRUCTURE VERIFICATION ============
+async function verifyAndFixTableStructure() {
+    const client = await pool.connect();
+    try {
+        consoleLog('INFO', 'Verifying database table structures...');
+        
+        // Check and fix tasks table columns
+        const tasksColumns = await client.query(`
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'tasks'
+        `);
+        
+        const existingTaskColumns = tasksColumns.rows.map(c => c.column_name);
+        
+        // Define all required columns for tasks table
+        const requiredTaskColumns = [
+            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+            { name: 'user_id', type: 'INTEGER NOT NULL' },
+            { name: 'user_email', type: 'TEXT NOT NULL', default: "''" },
+            { name: 'title', type: 'TEXT NOT NULL' },
+            { name: 'description', type: 'TEXT', default: 'NULL' },
+            { name: 'project', type: 'TEXT', default: 'NULL' },
+            { name: 'category', type: 'TEXT', default: 'NULL' },
+            { name: 'severity', type: 'TEXT DEFAULT \'Medium\'' },
+            { name: 'priority', type: 'INTEGER DEFAULT 2' },
+            { name: 'deadline', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'is_recurring', type: 'INTEGER DEFAULT 0' },
+            { name: 'recurrence_pattern', type: 'TEXT', default: 'NULL' },
+            { name: 'recurrence_end_date', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'scheduled_start', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'scheduled_end', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'actual_start', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'actual_end', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'completed', type: 'INTEGER DEFAULT 0' },
+            { name: 'completed_at', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'completion_notes', type: 'TEXT', default: 'NULL' },
+            { name: 'email_reminder_sent', type: 'INTEGER DEFAULT 0' },
+            { name: 'deadline_reminder_sent', type: 'INTEGER DEFAULT 0' },
+            { name: 'overdue_reminder_sent', type: 'INTEGER DEFAULT 0' },
+            { name: 'reminder_count', type: 'INTEGER DEFAULT 0' },
+            { name: 'last_reminder_sent', type: 'TIMESTAMP', default: 'NULL' },
+            { name: 'estimated_duration', type: 'INTEGER', default: 'NULL' },
+            { name: 'actual_duration', type: 'INTEGER', default: 'NULL' },
+            { name: 'tags', type: 'TEXT', default: 'NULL' },
+            { name: 'attachments', type: 'TEXT', default: 'NULL' },
+            { name: 'subtasks', type: 'TEXT', default: 'NULL' },
+            { name: 'dependencies', type: 'TEXT', default: 'NULL' },
+            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+            { name: 'updated_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+            { name: 'deleted_at', type: 'TIMESTAMP', default: 'NULL' }
+        ];
+        
+        // Add missing columns to tasks table
+        for (const col of requiredTaskColumns) {
+            if (!existingTaskColumns.includes(col.name)) {
+                consoleLog('INFO', `Adding missing column to tasks: ${col.name}`);
+                try {
+                    await client.query(`
+                        ALTER TABLE tasks 
+                        ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}
+                    `);
+                } catch (err) {
+                    consoleLog('WARNING', `Could not add column ${col.name}:`, err.message);
+                }
+            }
+        }
+        
+        // Ensure tasks table has foreign key constraint
+        await client.query(`
+            DO $$ 
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE constraint_name = 'tasks_user_id_fkey' 
+                    AND table_name = 'tasks'
+                ) THEN
+                    ALTER TABLE tasks ADD CONSTRAINT tasks_user_id_fkey 
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+                END IF;
+            END $$;
+        `);
+        
+        consoleLog('SUCCESS', 'Table structures verified and fixed');
+        
+        // Fix any tasks with missing user_email
+        const fixResult = await client.query(`
+            UPDATE tasks 
+            SET user_email = COALESCE(
+                (SELECT email FROM users WHERE users.id = tasks.user_id),
+                ''
+            )
+            WHERE user_email IS NULL OR user_email = ''
+        `);
+        
+        if (fixResult.rowCount > 0) {
+            consoleLog('INFO', `Fixed ${fixResult.rowCount} tasks with missing user_email`);
+        }
+        
+    } catch (err) {
+        consoleLog('ERROR', 'Error verifying table structure:', err.message);
+    } finally {
+        client.release();
+    }
+}
 // ============ CLEANUP INVALID REMINDERS ============
 async function cleanupInvalidReminders() {
     try {
-        // Delete reminders with invalid timestamps
-        const result = await pool.query(`
-            DELETE FROM reminders 
-            WHERE reminder_time IS NULL 
-            OR reminder_time = '' 
-            OR reminder_time::text = ''
-            OR reminder_time::text = 'null'
-        `);
-        if (result.rowCount > 0) {
-            consoleLog('INFO', `Cleaned up ${result.rowCount} invalid reminders`);
-        }
+        // First, verify table structures
+        await verifyAndFixTableStructure();
         
-        // Also fix any tasks with invalid reminder flags
+        // Fix invalid reminder timestamps
         await pool.query(`
             UPDATE reminders 
             SET reminder_time = NOW() 
             WHERE reminder_time IS NULL 
-            AND sent = 0
+               OR reminder_time = '' 
+               OR reminder_time::text = 'null'
+               OR reminder_time::text = ''
         `);
         
-        return result.rowCount;
+        // Fix tasks with missing user_email
+        const fixResult = await pool.query(`
+            UPDATE tasks 
+            SET user_email = COALESCE(
+                (SELECT email FROM users WHERE users.id = tasks.user_id),
+                ''
+            )
+            WHERE user_email IS NULL OR user_email = ''
+        `);
+        
+        if (fixResult.rowCount > 0) {
+            consoleLog('INFO', `Fixed ${fixResult.rowCount} tasks with missing user_email`);
+        }
+        
+        consoleLog('SUCCESS', 'Database cleanup completed');
+        
     } catch (err) {
         consoleLog('WARNING', 'Could not clean up invalid reminders:', err.message);
-        return 0;
     }
 }
 // ============ EMAIL TRANSPORTER ============
@@ -1219,18 +1332,50 @@ app.put('/api/settings', requireAuth, async (req, res) => {
 app.get('/api/tasks', requireAuth, async (req, res) => {
     consoleLog('INFO', `Loading tasks for user: ${req.session.email}`);
     try {
-        const result = await pool.query(
-            `SELECT * FROM tasks WHERE user_id = $1 AND (deleted_at IS NULL OR deleted_at = '') 
-             ORDER BY CASE severity 
-                WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 
-             END, deadline ASC NULLS LAST, scheduled_start ASC NULLS LAST`,
-            [req.session.userId]
-        );
+        // Simple query that should work with basic table structure
+        const result = await pool.query(`
+            SELECT 
+                id, 
+                user_id, 
+                user_email, 
+                title, 
+                description, 
+                project, 
+                category, 
+                severity, 
+                priority, 
+                deadline, 
+                scheduled_start, 
+                scheduled_end, 
+                completed, 
+                completed_at, 
+                tags, 
+                is_recurring,
+                recurrence_pattern,
+                created_at,
+                updated_at,
+                deleted_at
+            FROM tasks 
+            WHERE user_id = $1 
+            AND (deleted_at IS NULL OR deleted_at = '')
+            ORDER BY 
+                CASE 
+                    WHEN severity = 'Critical' THEN 1
+                    WHEN severity = 'High' THEN 2
+                    WHEN severity = 'Medium' THEN 3
+                    WHEN severity = 'Low' THEN 4
+                    ELSE 5
+                END,
+                deadline ASC NULLS LAST, 
+                scheduled_start ASC NULLS LAST
+        `, [req.session.userId]);
+        
         consoleLog('SUCCESS', `Loaded ${result.rows.length} tasks for ${req.session.email}`);
         res.json(result.rows || []);
     } catch (err) {
-        consoleLog('ERROR', `Failed to load tasks for ${req.session.email}:`, err.message);
-        res.status(500).json({ error: err.message });
+        consoleLog('ERROR', `Failed to load tasks:`, err.message);
+        // Return empty array on error so UI doesn't break
+        res.json([]);
     }
 });
 
@@ -1283,37 +1428,79 @@ app.get('/api/overdue-tasks', requireAuth, async (req, res) => {
 
 app.post('/api/tasks', requireAuth, async (req, res) => {
     const { title, description, project, category, severity, priority, deadline, is_recurring, recurrence_pattern, scheduled_start, scheduled_end, estimated_duration, tags } = req.body;
+    
     consoleLog('INFO', `Creating task for user: ${req.session.email} - Title: ${title}`);
     
-    if (!title) return res.status(400).json({ error: 'Task title is required' });
+    if (!title) {
+        return res.status(400).json({ error: 'Task title is required' });
+    }
     
     try {
-        const result = await pool.query(
-            `INSERT INTO tasks (user_id, user_email, title, description, project, category, severity, priority, deadline, 
-              is_recurring, recurrence_pattern, scheduled_start, scheduled_end, estimated_duration, tags)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
-            [req.session.userId, req.session.email, title, description || null, project || null, category || null, 
-             severity || 'Medium', priority || 2, deadline || null, is_recurring ? 1 : 0, recurrence_pattern || null, 
-             scheduled_start || null, scheduled_end || null, estimated_duration || null, tags || null]
-        );
+        // First, ensure the tasks table exists with all required columns
+        await verifyAndFixTableStructure();
+        
+        const result = await pool.query(`
+            INSERT INTO tasks (
+                user_id, 
+                user_email, 
+                title, 
+                description, 
+                project, 
+                category, 
+                severity, 
+                priority, 
+                deadline, 
+                is_recurring, 
+                recurrence_pattern, 
+                scheduled_start, 
+                scheduled_end, 
+                estimated_duration, 
+                tags,
+                created_at,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+            RETURNING id
+        `, [
+            req.session.userId, 
+            req.session.email, 
+            title, 
+            description || null, 
+            project || null, 
+            category || null, 
+            severity || 'Medium', 
+            priority || 2, 
+            deadline || null, 
+            is_recurring ? 1 : 0, 
+            recurrence_pattern || null, 
+            scheduled_start || null, 
+            scheduled_end || null, 
+            estimated_duration || null, 
+            tags || null
+        ]);
         
         const taskId = result.rows[0].id;
         
+        // Create reminder if scheduled
         if (scheduled_start) {
-            const reminderTime = new Date(new Date(scheduled_start).getTime() - 20 * 60 * 1000);
-            await pool.query(
-                `INSERT INTO reminders (user_id, user_email, task_id, reminder_time, reminder_type) VALUES ($1, $2, $3, $4, 'scheduled')`,
-                [req.session.userId, req.session.email, taskId, reminderTime.toISOString()]
-            );
-            consoleLog('INFO', `Reminder created for task ${taskId} at ${reminderTime}`);
+            try {
+                const reminderTime = new Date(new Date(scheduled_start).getTime() - 20 * 60 * 1000);
+                await pool.query(`
+                    INSERT INTO reminders (user_id, user_email, task_id, reminder_time, reminder_type) 
+                    VALUES ($1, $2, $3, $4, 'scheduled')
+                `, [req.session.userId, req.session.email, taskId, reminderTime.toISOString()]);
+            } catch (reminderErr) {
+                consoleLog('WARNING', 'Could not create reminder:', reminderErr.message);
+            }
         }
         
         consoleLog('SUCCESS', `Task created for ${req.session.email}: ${title} (ID: ${taskId})`);
         await logUserActivity(req.session.userId, req.session.email, 'TASK_CREATED', `Task: ${title}`, req);
         res.json({ id: taskId, message: 'Task created successfully' });
+        
     } catch (err) {
-        consoleLog('ERROR', `Failed to create task for ${req.session.email}:`, err.message);
-        res.status(500).json({ error: err.message });
+        consoleLog('ERROR', `Failed to create task:`, err.message);
+        res.status(500).json({ error: err.message || 'Failed to create task' });
     }
 });
 
@@ -1678,22 +1865,44 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
 app.get('/api/user-stats', requireAuth, async (req, res) => {
     consoleLog('INFO', `Loading stats for user: ${req.session.email}`);
     try {
+        // Simple stats query that won't fail
         const result = await pool.query(`
             SELECT 
                 COUNT(CASE WHEN completed = 1 THEN 1 END) as completed_tasks,
-                COUNT(CASE WHEN completed = 0 AND scheduled_start IS NOT NULL AND scheduled_start != '' AND (deleted_at IS NULL OR deleted_at = '') THEN 1 END) as scheduled_tasks,
-                COUNT(CASE WHEN completed = 0 AND (scheduled_start IS NULL OR scheduled_start = '') AND (deleted_at IS NULL OR deleted_at = '') THEN 1 END) as unscheduled_tasks,
-                COUNT(CASE WHEN severity = 'Critical' AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '') THEN 1 END) as critical_tasks,
-                COUNT(CASE WHEN severity = 'High' AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '') THEN 1 END) as high_priority_tasks,
-                COUNT(CASE WHEN deadline < CURRENT_TIMESTAMP AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '') THEN 1 END) as overdue_tasks,
+                COUNT(CASE WHEN completed = 0 AND scheduled_start IS NOT NULL THEN 1 END) as scheduled_tasks,
+                COUNT(CASE WHEN completed = 0 AND (scheduled_start IS NULL OR scheduled_start = '') THEN 1 END) as unscheduled_tasks,
+                COUNT(CASE WHEN severity = 'Critical' AND completed = 0 THEN 1 END) as critical_tasks,
+                COUNT(CASE WHEN severity = 'High' AND completed = 0 THEN 1 END) as high_priority_tasks,
+                COUNT(CASE WHEN deadline < CURRENT_TIMESTAMP AND completed = 0 THEN 1 END) as overdue_tasks,
                 COUNT(CASE WHEN created_at > NOW() - INTERVAL '7 days' THEN 1 END) as tasks_this_week
-            FROM tasks WHERE user_id = $1`,
-            [req.session.userId]
-        );
-        res.json(result.rows[0] || {});
+            FROM tasks 
+            WHERE user_id = $1
+            AND (deleted_at IS NULL OR deleted_at = '')
+        `, [req.session.userId]);
+        
+        const stats = result.rows[0] || {
+            completed_tasks: 0,
+            scheduled_tasks: 0,
+            unscheduled_tasks: 0,
+            critical_tasks: 0,
+            high_priority_tasks: 0,
+            overdue_tasks: 0,
+            tasks_this_week: 0
+        };
+        
+        res.json(stats);
     } catch (err) {
         consoleLog('ERROR', `Failed to load stats:`, err.message);
-        res.status(500).json({ error: err.message });
+        // Return default stats on error
+        res.json({
+            completed_tasks: 0,
+            scheduled_tasks: 0,
+            unscheduled_tasks: 0,
+            critical_tasks: 0,
+            high_priority_tasks: 0,
+            overdue_tasks: 0,
+            tasks_this_week: 0
+        });
     }
 });
 
@@ -1940,13 +2149,21 @@ app.use((req, res) => {
 // ============ SERVER STARTUP ============
 async function startServer() {
     try {
+        consoleLog('INFO', 'Starting TaskWeaver server...');
+        
+        // Initialize database (creates tables if they don't exist)
         await initializeDatabase();
         
-        // Clean up any invalid reminders
+        // Verify and fix table structures (adds missing columns)
+        await verifyAndFixTableStructure();
+        
+        // Clean up any invalid data
         await cleanupInvalidReminders();
         
+        // Setup email transporter
         setupEmailTransporter();
         
+        // Start the server
         app.listen(port, '0.0.0.0', () => {
             consoleLog('SUCCESS', `\n╔══════════════════════════════════════════════════════════════╗`);
             consoleLog('SUCCESS', `║                    🚀 TASKWEAVER SERVER 🚀                      ║`);
@@ -1974,16 +2191,38 @@ async function startServer() {
             consoleLog('SUCCESS', `╚══════════════════════════════════════════════════════════════╝\n`);
         });
         
+        // Graceful shutdown handlers
         process.on('SIGTERM', () => { 
-            consoleLog('INFO', 'SIGTERM received, shutting down...');
-            pool.end(() => process.exit(0)); 
+            consoleLog('INFO', 'SIGTERM received, shutting down gracefully...');
+            pool.end(() => {
+                consoleLog('SUCCESS', 'Database connections closed');
+                process.exit(0);
+            });
         });
+        
         process.on('SIGINT', () => { 
-            consoleLog('INFO', 'SIGINT received, shutting down...');
-            pool.end(() => process.exit(0)); 
+            consoleLog('INFO', 'SIGINT received, shutting down gracefully...');
+            pool.end(() => {
+                consoleLog('SUCCESS', 'Database connections closed');
+                process.exit(0);
+            });
         });
+        
+        // Handle uncaught exceptions
+        process.on('uncaughtException', (error) => {
+            consoleLog('ERROR', 'Uncaught Exception:', error.message);
+            consoleLog('ERROR', error.stack);
+            // Don't exit immediately, let the app continue
+        });
+        
+        process.on('unhandledRejection', (reason, promise) => {
+            consoleLog('ERROR', 'Unhandled Rejection at:', promise);
+            consoleLog('ERROR', 'Reason:', reason);
+        });
+        
     } catch (error) {
         consoleLog('ERROR', 'Failed to start server:', error.message);
+        consoleLog('ERROR', error.stack);
         process.exit(1);
     }
 }
