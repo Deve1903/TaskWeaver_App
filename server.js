@@ -1,13 +1,13 @@
 const express = require('express');
-const { Pool } = require('pg');
+const { Pool } = require('pg');  
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const cron = require('node-cron');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs'); 
 const crypto = require('crypto');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
+const pgSession = require('connect-pg-simple')(session);  
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
@@ -26,7 +26,6 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 });
-
 // Test database connection
 pool.connect((err, client, release) => {
   if (err) {

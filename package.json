@@ -4,8 +4,7 @@
   "main": "database.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js",
-    "postinstall": "npm rebuild sqlite3 --build-from-source"
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +29,6 @@
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
   }
 }
