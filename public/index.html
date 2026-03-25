@@ -44,60 +44,185 @@
             overflow-x: hidden;
         }
 
-        /* Mobile First Design */
+        /* Container Responsive */
         .container-fluid {
-            padding: 10px;
+            padding: 12px;
+        }
+        
+        @media (min-width: 768px) {
+            .container-fluid {
+                padding: 20px;
+            }
         }
 
+        /* Glass Card */
         .glass-card {
             background: rgba(255, 255, 255, 0.98);
             backdrop-filter: blur(20px);
-            border-radius: 20px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            padding: 15px;
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            padding: 16px;
             transition: all 0.3s ease;
         }
+        
+        @media (min-width: 768px) {
+            .glass-card {
+                padding: 20px;
+            }
+        }
 
-        /* Mobile Layout - Stack vertically */
+        /* Funnel & Calendar Containers */
         .funnel-container, .calendar-container {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 15px;
-            margin-bottom: 15px;
-            height: auto;
-            max-height: 50vh;
-            overflow-y: auto;
+            border-radius: 24px;
+            padding: 16px;
+            margin-bottom: 16px;
+            transition: all 0.3s ease;
         }
-
-        /* Desktop Layout - Side by side */
+        
         @media (min-width: 768px) {
-            .container-fluid {
-                padding: 15px;
-            }
-            
             .funnel-container {
-                height: calc(100vh - 120px);
+                height: calc(100vh - 140px);
                 margin-bottom: 0;
+                overflow-y: auto;
             }
             
             .calendar-container {
-                height: calc(100vh - 120px);
+                height: calc(100vh - 140px);
                 margin-bottom: 0;
+                overflow-y: auto;
             }
         }
 
+        /* Funnel Header with Controls */
+        .funnel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid rgba(107, 70, 193, 0.2);
+        }
+        
+        .funnel-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .funnel-title h5 {
+            margin: 0;
+            font-weight: 600;
+        }
+        
+        .funnel-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .funnel-toggle-btn {
+            background: transparent;
+            border: 1px solid var(--primary);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--primary);
+        }
+        
+        .funnel-toggle-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .funnel-toggle-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .funnel-stats {
+            background: rgba(107, 70, 193, 0.1);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            color: var(--primary);
+            font-weight: 500;
+        }
+        
+        /* Filter Buttons */
+        .filter-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+        }
+        
+        .filter-scroll::-webkit-scrollbar {
+            height: 3px;
+        }
+        
+        .filter-btn {
+            background: transparent;
+            border: 1px solid rgba(107, 70, 193, 0.3);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+            margin-right: 8px;
+            cursor: pointer;
+            display: inline-block;
+        }
+        
+        @media (min-width: 768px) {
+            .filter-btn {
+                padding: 8px 16px;
+                font-size: 0.85rem;
+            }
+        }
+        
+        .filter-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        
+        .filter-btn:hover:not(.active) {
+            background: rgba(107, 70, 193, 0.1);
+            border-color: var(--primary);
+        }
+        
+        /* Task Cards */
         .task-card {
             background: white;
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 10px;
+            border-radius: 16px;
+            padding: 14px;
+            margin-bottom: 12px;
             cursor: grab;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-left: 4px solid var(--primary);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
             position: relative;
             user-select: none;
+            animation: fadeInUp 0.3s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         .task-card:active { cursor: grabbing; }
@@ -111,6 +236,11 @@
             cursor: grabbing;
         }
         
+        .task-card.task-hidden {
+            display: none;
+        }
+        
+        /* Severity Colors */
         .task-critical { border-left-color: #dc3545; }
         .task-high { border-left-color: #fd7e14; }
         .task-medium { border-left-color: #ffc107; }
@@ -119,15 +249,42 @@
         .task-title {
             font-weight: 600;
             font-size: 0.9rem;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
             cursor: pointer;
             flex: 1;
             word-break: break-word;
         }
         
         .task-title:hover { color: var(--primary); }
-
-        /* Mobile Calendar Adjustments */
+        
+        .severity-Critical, .severity-High, .severity-Medium, .severity-Low {
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.65rem;
+            display: inline-block;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        
+        .severity-Critical { background: #dc3545; color: white; }
+        .severity-High { background: #fd7e14; color: white; }
+        .severity-Medium { background: #ffc107; color: black; }
+        .severity-Low { background: #28a745; color: white; }
+        
+        /* Empty State */
+        .empty-funnel {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--gray);
+        }
+        
+        .empty-funnel i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        
+        /* Calendar Customization */
         .fc {
             font-size: 12px;
         }
@@ -138,13 +295,20 @@
         }
         
         .fc-event {
-            font-size: 0.75rem !important;
-            padding: 4px 8px !important;
+            font-size: 0.7rem !important;
+            padding: 4px 6px !important;
             margin: 1px 2px !important;
+            cursor: pointer;
+            border-radius: 8px !important;
+            transition: transform 0.2s;
+        }
+        
+        .fc-event:hover {
+            transform: scale(1.02);
         }
         
         .fc-header-toolbar {
-            flex-direction: column;
+            flex-wrap: wrap;
             gap: 10px;
             margin-bottom: 1em !important;
         }
@@ -155,6 +319,19 @@
             float: none;
             display: flex;
             justify-content: center;
+        }
+        
+        .fc-toolbar-chunk {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .fc-button {
+            padding: 6px 10px !important;
+            font-size: 0.75rem !important;
+            border-radius: 20px !important;
         }
         
         @media (min-width: 768px) {
@@ -169,76 +346,101 @@
             .fc-header-toolbar {
                 flex-direction: row;
             }
-        }
-
-        .quick-add-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 50px;
-            height: 50px;
-            border-radius: 25px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white;
-            border: none;
-            box-shadow: 0 4px 12px rgba(107, 70, 193, 0.4);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-        
-        @media (min-width: 768px) {
-            .quick-add-btn {
-                bottom: 30px;
-                right: 30px;
-                width: 56px;
-                height: 56px;
-                font-size: 24px;
+            
+            .fc-button {
+                padding: 8px 14px !important;
+                font-size: 0.85rem !important;
             }
         }
         
-        .quick-add-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 8px 20px rgba(107, 70, 193, 0.5);
+        /* Calendar View Buttons */
+        .calendar-view-buttons {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
-
-        .filter-btn {
+        
+        .view-btn {
             background: transparent;
             border: 1px solid rgba(107, 70, 193, 0.3);
             border-radius: 20px;
             padding: 6px 12px;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             transition: all 0.2s;
-            margin-right: 6px;
-            margin-bottom: 8px;
             cursor: pointer;
-            white-space: nowrap;
         }
         
-        @media (min-width: 768px) {
-            .filter-btn {
-                padding: 6px 14px;
-                font-size: 0.85rem;
-            }
-        }
-        
-        .filter-btn.active {
+        .view-btn.active {
             background: var(--primary);
             color: white;
             border-color: var(--primary);
         }
-
+        
+        @media (min-width: 768px) {
+            .view-btn {
+                padding: 8px 16px;
+                font-size: 0.85rem;
+            }
+        }
+        
+        /* Custom Modal Styles */
+        .modal-content {
+            border-radius: 24px;
+            border: none;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            border: none;
+            padding: 20px 24px;
+        }
+        
+        .modal-body {
+            padding: 24px;
+        }
+        
+        .modal-footer {
+            border: none;
+            padding: 16px 24px 24px;
+            gap: 12px;
+        }
+        
+        .confirmation-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 28px;
+        }
+        
+        .confirmation-icon.warning {
+            background: rgba(245, 101, 101, 0.1);
+            color: var(--danger);
+        }
+        
+        .confirmation-icon.success {
+            background: rgba(72, 187, 120, 0.1);
+            color: var(--secondary);
+        }
+        
+        .confirmation-icon.info {
+            background: rgba(66, 153, 225, 0.1);
+            color: var(--info);
+        }
+        
+        /* Toast Notifications */
         .toast-notification {
             position: fixed;
             bottom: 20px;
             left: 20px;
             right: 20px;
             z-index: 9999;
-            max-width: 350px;
+            max-width: 400px;
             margin: 0 auto;
             animation: slideInUp 0.3s ease-out;
         }
@@ -260,41 +462,57 @@
             from { transform: translateY(0); opacity: 1; }
             to { transform: translateY(100%); opacity: 0; }
         }
-
-        .severity-Critical, .severity-High, .severity-Medium, .severity-Low {
-            padding: 2px 8px;
-            border-radius: 20px;
-            font-size: 0.65rem;
-            display: inline-block;
-            white-space: nowrap;
-        }
         
-        .severity-Critical { background: #dc3545; color: white; }
-        .severity-High { background: #fd7e14; color: white; }
-        .severity-Medium { background: #ffc107; color: black; }
-        .severity-Low { background: #28a745; color: white; }
-
-        /* Mobile-friendly buttons */
-        .btn-sm {
-            padding: 4px 8px;
-            font-size: 0.75rem;
+        /* Quick Add Button */
+        .quick-add-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px rgba(107, 70, 193, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
         }
         
         @media (min-width: 768px) {
-            .btn-sm {
-                padding: 4px 10px;
-                font-size: 0.875rem;
+            .quick-add-btn {
+                bottom: 30px;
+                right: 30px;
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
             }
         }
-
-        /* Header responsive */
-        .header-buttons {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            justify-content: flex-end;
+        
+        .quick-add-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 20px rgba(107, 70, 193, 0.5);
         }
         
+        /* Loading Spinner */
+        .loading-spinner {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+        }
+        
+        #mainContent {
+            display: none;
+        }
+        
+        /* Responsive Text */
         @media (max-width: 576px) {
             .header-buttons {
                 justify-content: center;
@@ -305,36 +523,14 @@
                 flex-direction: column;
                 text-align: center;
             }
-        }
-
-        .loading-spinner {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 9999;
-        }
-
-        #mainContent {
-            display: none;
-        }
-        
-        /* Modal responsive */
-        .modal-dialog {
-            margin: 10px;
-        }
-        
-        @media (min-width: 576px) {
-            .modal-dialog {
-                margin: 1.75rem auto;
+            
+            .btn-sm {
+                padding: 6px 10px;
+                font-size: 0.7rem;
             }
         }
         
-        .modal-content {
-            border-radius: 20px;
-        }
-        
-        /* Scrollbar styling */
+        /* Scrollbar Styling */
         ::-webkit-scrollbar {
             width: 4px;
             height: 4px;
@@ -350,17 +546,19 @@
             border-radius: 10px;
         }
         
-        /* Better touch targets for mobile */
+        /* Better touch targets */
         button, 
         .task-card,
         .filter-btn,
-        .quick-add-btn {
+        .quick-add-btn,
+        .view-btn,
+        .funnel-toggle-btn {
             touch-action: manipulation;
         }
         
         /* Form elements responsive */
         input, select, textarea {
-            font-size: 16px !important; /* Prevents zoom on mobile */
+            font-size: 16px !important;
         }
     </style>
 </head>
@@ -403,7 +601,7 @@
                                     <i class="fas fa-cog"></i>
                                 </button>
                                 <div id="userDisplay" class="fw-bold small"></div>
-                                <button class="btn btn-outline-danger btn-sm" onclick="logout()">
+                                <button class="btn btn-outline-danger btn-sm" onclick="showLogoutConfirmation()">
                                     <i class="fas fa-sign-out-alt"></i>
                                 </button>
                             </div>
@@ -416,30 +614,46 @@
                 <!-- Left Sidebar - Task Funnel -->
                 <div class="col-12 col-md-4 mb-3 mb-md-0">
                     <div class="funnel-container">
-                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-                            <h5 class="mb-0"><i class="fas fa-funnel-dollar me-2"></i>Task Funnel</h5>
-                            <small class="text-muted">Drag to calendar</small>
+                        <div class="funnel-header">
+                            <div class="funnel-title">
+                                <i class="fas fa-funnel-dollar" style="color: var(--primary);"></i>
+                                <h5>Task Funnel</h5>
+                            </div>
+                            <div class="funnel-controls">
+                                <span class="funnel-stats" id="funnelStats">0 tasks</span>
+                                <button class="funnel-toggle-btn" id="collapseFunnelBtn" onclick="toggleFunnelCollapse()">
+                                    <i class="fas fa-chevron-up"></i>
+                                </button>
+                            </div>
                         </div>
                         
-                        <!-- Filters - Scrollable on mobile -->
-                        <div class="mb-3 overflow-auto" style="white-space: nowrap; -webkit-overflow-scrolling: touch;">
-                            <button class="filter-btn active" data-filter="all">All</button>
-                            <button class="filter-btn" data-filter="Critical">🔴 Critical</button>
-                            <button class="filter-btn" data-filter="High">🟠 High</button>
-                            <button class="filter-btn" data-filter="Medium">🟡 Medium</button>
-                            <button class="filter-btn" data-filter="Low">🟢 Low</button>
-                            <button class="filter-btn" data-filter="Work">💼 Work</button>
-                            <button class="filter-btn" data-filter="Study">📚 Study</button>
-                            <button class="filter-btn" data-filter="Family">👨‍👩‍👧 Family</button>
+                        <div id="funnelContent">
+                            <!-- Filters - Scrollable on mobile -->
+                            <div class="filter-scroll">
+                                <button class="filter-btn active" data-filter="all">All</button>
+                                <button class="filter-btn" data-filter="Critical">🔴 Critical</button>
+                                <button class="filter-btn" data-filter="High">🟠 High</button>
+                                <button class="filter-btn" data-filter="Medium">🟡 Medium</button>
+                                <button class="filter-btn" data-filter="Low">🟢 Low</button>
+                                <button class="filter-btn" data-filter="Work">💼 Work</button>
+                                <button class="filter-btn" data-filter="Study">📚 Study</button>
+                                <button class="filter-btn" data-filter="Family">👨‍👩‍👧 Family</button>
+                            </div>
+                            
+                            <div id="funnelTasksList" style="max-height: calc(100% - 80px); overflow-y: auto;"></div>
                         </div>
-                        
-                        <div id="funnelTasksList" style="max-height: calc(100% - 80px); overflow-y: auto;"></div>
                     </div>
                 </div>
 
                 <!-- Right Side - Calendar -->
                 <div class="col-12 col-md-8">
                     <div class="calendar-container">
+                        <!-- Custom Calendar View Buttons -->
+                        <div class="calendar-view-buttons">
+                            <button class="view-btn" data-view="timeGridDay">📅 Day</button>
+                            <button class="view-btn active" data-view="timeGridWeek">📆 Week</button>
+                            <button class="view-btn" data-view="dayGridMonth">🗓️ Month</button>
+                        </div>
                         <div id="calendar"></div>
                     </div>
                 </div>
@@ -450,7 +664,131 @@
     <!-- Quick Add Button -->
     <button class="quick-add-btn" onclick="openQuickAddModal()"><i class="fas fa-plus"></i></button>
 
-    <!-- Modals - Same as before but with responsive classes -->
+    <!-- Confirmation Modal for Logout -->
+    <div class="modal fade" id="logoutConfirmModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #f56565, #e53e3e); color: white; text-align: center;">
+                    <h5 class="modal-title w-100"><i class="fas fa-sign-out-alt me-2"></i>Confirm Logout</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="confirmation-icon warning mx-auto">
+                        <i class="fas fa-question-circle"></i>
+                    </div>
+                    <h5 class="mb-2">Ready to leave?</h5>
+                    <p class="text-muted mb-0">Are you sure you want to logout? You'll need to login again to access your tasks.</p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Cancel
+                    </button>
+                    <button class="btn btn-danger px-4" onclick="confirmLogout()">
+                        <i class="fas fa-sign-out-alt me-2"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal fade" id="successModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-body text-center py-4">
+                    <div class="confirmation-icon success mx-auto">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h5 class="mb-2" id="successMessage">Success!</h5>
+                    <p class="text-muted mb-0" id="successDetails">Action completed successfully</p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button class="btn btn-primary px-4" data-bs-dismiss="modal">
+                        <i class="fas fa-check me-2"></i>OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div class="modal fade" id="errorModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #f56565, #e53e3e); color: white;">
+                    <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Error</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="errorMessage">An error occurred. Please try again.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div class="modal fade" id="infoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, var(--info), #3182ce); color: white;">
+                    <h5 class="modal-title"><i class="fas fa-info-circle me-2"></i>Information</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="infoMessage"></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warning Modal -->
+    <div class="modal fade" id="warningModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, var(--warning), #ed8936); color: white;">
+                    <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Warning</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="warningMessage"></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-warning" data-bs-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal for Delete -->
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #f56565, #e53e3e); color: white;">
+                    <h5 class="modal-title"><i class="fas fa-trash-alt me-2"></i>Confirm Delete</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="confirmation-icon warning mx-auto">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h5 class="mb-2">Delete Task?</h5>
+                    <p class="text-muted" id="deleteTaskMessage">Are you sure you want to delete this task? This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-danger px-4" id="confirmDeleteBtn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Modal -->
     <div class="modal fade" id="taskModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
@@ -461,9 +799,8 @@
                 <div class="modal-body" id="taskModalBody"></div>
                 <div class="modal-footer">
                     <button class="btn btn-outline-primary btn-sm" onclick="openSchedulePopupFromModal()"><i class="fas fa-calendar-plus"></i> Schedule</button>
-                    <button class="btn btn-outline-danger btn-sm" onclick="moveTaskToFunnel()"><i class="fas fa-arrow-left"></i> Move</button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="showDeleteConfirmationFromModal()"><i class="fas fa-trash"></i> Delete</button>
                     <button class="btn btn-success btn-sm" onclick="completeCurrentTask()"><i class="fas fa-check-circle"></i> Complete</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteCurrentTask()"><i class="fas fa-trash"></i> Delete</button>
                     <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -704,6 +1041,19 @@
         </div>
     </div>
 
+    <!-- Funnel Collapse Toggle Button (Mobile) -->
+    <div class="modal fade" id="funnelCollapseModal" tabindex="-1">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
+                    <h5 class="modal-title"><i class="fas fa-funnel-dollar me-2"></i>Task Funnel</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="funnelModalBody"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
     <script>
@@ -720,11 +1070,19 @@
         let shareModal = null;
         let exportModal = null;
         let statsModal = null;
+        let logoutConfirmModal = null;
+        let successModal = null;
+        let errorModal = null;
+        let infoModal = null;
+        let warningModal = null;
+        let deleteConfirmModal = null;
+        let funnelCollapseModal = null;
         let pendingScheduleTaskId = null;
         let draggedTaskId = null;
         let calendarInitialized = false;
         let isAuthenticated = false;
         let refreshInterval = null;
+        let isFunnelCollapsed = false;
 
         function log(msg, data) {
             if (window.console) {
@@ -733,9 +1091,102 @@
             }
         }
 
+        // Modal Functions
+        function showSuccessModal(message, details = '') {
+            document.getElementById('successMessage').textContent = message;
+            document.getElementById('successDetails').textContent = details || 'Action completed successfully';
+            successModal.show();
+        }
+
+        function showErrorModal(message) {
+            document.getElementById('errorMessage').textContent = message;
+            errorModal.show();
+        }
+
+        function showInfoModal(message) {
+            document.getElementById('infoMessage').textContent = message;
+            infoModal.show();
+        }
+
+        function showWarningModal(message) {
+            document.getElementById('warningMessage').textContent = message;
+            warningModal.show();
+        }
+
+        function showLogoutConfirmation() {
+            logoutConfirmModal.show();
+        }
+
+        async function confirmLogout() {
+            logoutConfirmModal.hide();
+            if (refreshInterval) clearInterval(refreshInterval);
+            try {
+                await fetch(`${API_BASE}/api/logout`, { method: 'POST', credentials: 'include' });
+                showSuccessModal('Logged Out', 'You have been successfully logged out. Redirecting to login page...');
+                setTimeout(() => {
+                    window.location.href = '/login.html';
+                }, 1500);
+            } catch (error) {
+                showErrorModal('Error logging out. Please try again.');
+            }
+        }
+
+        function showDeleteConfirmation(taskId, taskTitle) {
+            currentTaskId = taskId;
+            document.getElementById('deleteTaskMessage').innerHTML = `Are you sure you want to delete "<strong>${escapeHtml(taskTitle)}</strong>"? This action cannot be undone.`;
+            deleteConfirmModal.show();
+        }
+
+        function showDeleteConfirmationFromModal() {
+            if (currentTaskId) {
+                const task = allTasks.find(t => t.id === currentTaskId);
+                if (task) {
+                    deleteConfirmModal.hide();
+                    showDeleteConfirmation(currentTaskId, task.title);
+                }
+            }
+        }
+
+        async function confirmDeleteTask() {
+            if (currentTaskId) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/tasks/${currentTaskId}`, { method: 'DELETE', credentials: 'include' });
+                    if (response.ok) {
+                        await loadAllTasks();
+                        if (taskModal) taskModal.hide();
+                        showSuccessModal('Task Deleted', 'The task has been successfully deleted.');
+                        currentTaskId = null;
+                    } else {
+                        showErrorModal('Failed to delete task. Please try again.');
+                    }
+                } catch (error) {
+                    showErrorModal('Error deleting task. Please try again.');
+                }
+            }
+            deleteConfirmModal.hide();
+        }
+
         // Initialize everything when page loads
         document.addEventListener('DOMContentLoaded', async function() {
             log('Dashboard loading...');
+            
+            // Initialize modals
+            taskModal = new bootstrap.Modal(document.getElementById('taskModal'));
+            addTaskModal = new bootstrap.Modal(document.getElementById('addTaskModal'));
+            settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            schedulePopupModal = new bootstrap.Modal(document.getElementById('schedulePopupModal'));
+            shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
+            exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
+            statsModal = new bootstrap.Modal(document.getElementById('statsModal'));
+            logoutConfirmModal = new bootstrap.Modal(document.getElementById('logoutConfirmModal'));
+            successModal = new bootstrap.Modal(document.getElementById('successModal'));
+            errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+            infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
+            warningModal = new bootstrap.Modal(document.getElementById('warningModal'));
+            deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+            funnelCollapseModal = new bootstrap.Modal(document.getElementById('funnelCollapseModal'));
+            
+            document.getElementById('confirmDeleteBtn').onclick = confirmDeleteTask;
             
             const authResult = await checkAuth();
             if (authResult) {
@@ -749,14 +1200,7 @@
                 initFilters();
                 initRecurringToggle();
                 initPlacementToggle();
-                
-                taskModal = new bootstrap.Modal(document.getElementById('taskModal'));
-                addTaskModal = new bootstrap.Modal(document.getElementById('addTaskModal'));
-                settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
-                schedulePopupModal = new bootstrap.Modal(document.getElementById('schedulePopupModal'));
-                shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
-                exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
-                statsModal = new bootstrap.Modal(document.getElementById('statsModal'));
+                initCalendarViewButtons();
                 
                 // Refresh every 30 seconds
                 refreshInterval = setInterval(async function() {
@@ -833,11 +1277,13 @@
                 });
                 if (response.ok) {
                     applyTheme(settings.theme);
-                    showNotification('Settings saved!', 'success');
+                    showSuccessModal('Settings Saved', 'Your preferences have been updated successfully.');
                     settingsModal.hide();
+                } else {
+                    showErrorModal('Failed to save settings. Please try again.');
                 }
             } catch (error) {
-                showNotification('Error saving settings', 'error');
+                showErrorModal('Error saving settings. Please try again.');
             }
         }
 
@@ -940,13 +1386,60 @@
                 log('Loaded tasks:', allTasks.length);
                 
                 renderFunnelTasks();
+                updateFunnelStats();
                 
                 if (calendar && calendarInitialized) {
                     renderCalendarEvents();
                 }
             } catch (error) {
                 log('Error loading tasks:', error);
-                showNotification('Error loading tasks', 'error');
+                showErrorModal('Error loading tasks. Please refresh the page.');
+            }
+        }
+
+        function updateFunnelStats() {
+            const unscheduledTasks = allTasks.filter(task => {
+                const hasNoSchedule = !task.scheduled_start || 
+                                     task.scheduled_start === '' || 
+                                     task.scheduled_start === null ||
+                                     task.scheduled_start === 'null';
+                const isNotCompleted = task.completed !== 1;
+                return hasNoSchedule && isNotCompleted;
+            });
+            document.getElementById('funnelStats').textContent = `${unscheduledTasks.length} task${unscheduledTasks.length !== 1 ? 's' : ''}`;
+        }
+
+        function toggleFunnelCollapse() {
+            const content = document.getElementById('funnelContent');
+            const btn = document.getElementById('collapseFunnelBtn');
+            
+            if (window.innerWidth < 768) {
+                // On mobile, show fullscreen modal
+                const modalBody = document.getElementById('funnelModalBody');
+                modalBody.innerHTML = document.getElementById('funnelContent').cloneNode(true).innerHTML;
+                funnelCollapseModal.show();
+                
+                // Reattach event listeners for the modal content
+                setTimeout(() => {
+                    document.querySelectorAll('#funnelModalBody .filter-btn').forEach(btn => {
+                        btn.onclick = () => {
+                            document.querySelectorAll('#funnelModalBody .filter-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            currentFilter = btn.dataset.filter;
+                            renderFunnelTasks();
+                            funnelCollapseModal.hide();
+                        };
+                    });
+                }, 100);
+            } else {
+                // On desktop, toggle collapse
+                if (content.style.maxHeight) {
+                    content.style.maxHeight = null;
+                    btn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                } else {
+                    content.style.maxHeight = '300px';
+                    btn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                }
             }
         }
 
@@ -971,7 +1464,13 @@
             }
             
             if (filteredTasks.length === 0) {
-                container.innerHTML = `<div class="text-center text-muted py-4"><i class="fas fa-check-circle fa-3x mb-2"></i><p class="mb-0">No tasks in funnel</p><button class="btn btn-sm btn-primary mt-2" onclick="openQuickAddModal()"><i class="fas fa-plus"></i> Add Task</button></div>`;
+                container.innerHTML = `<div class="empty-funnel">
+                    <i class="fas fa-check-circle"></i>
+                    <p class="mb-2">No tasks in funnel</p>
+                    <button class="btn btn-sm btn-primary" onclick="openQuickAddModal()">
+                        <i class="fas fa-plus"></i> Add Task
+                    </button>
+                </div>`;
                 return;
             }
             
@@ -1065,11 +1564,7 @@
             
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: window.innerWidth < 768 ? 'timeGridDay' : 'timeGridWeek',
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: window.innerWidth < 768 ? 'timeGridDay' : 'timeGridWeek,timeGridDay,dayGridMonth'
-                },
+                headerToolbar: false,
                 slotMinTime: '00:00:00',
                 slotMaxTime: '24:00:00',
                 allDaySlot: false,
@@ -1097,18 +1592,31 @@
                 
                 eventResize: async (info) => updateTaskSchedule(info.event.id, info.event.start, info.event.end),
                 
-                dateClick: (info) => openAddTaskAtTimeModal(info.date),
-                
-                windowResize: function(view) {
-                    const viewType = window.innerWidth < 768 ? 'timeGridDay' : 'timeGridWeek';
-                    if (calendar.view.type !== viewType) {
-                        calendar.changeView(viewType);
-                    }
-                }
+                dateClick: (info) => openAddTaskAtTimeModal(info.date)
             });
             
             calendar.render();
             calendarInitialized = true;
+        }
+
+        function initCalendarViewButtons() {
+            const buttons = document.querySelectorAll('.view-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    buttons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const view = btn.dataset.view;
+                    if (calendar) {
+                        calendar.changeView(view);
+                        // Adjust for mobile
+                        if (view === 'timeGridDay' && window.innerWidth < 768) {
+                            // Day view works well on mobile
+                        } else if (view === 'timeGridWeek' && window.innerWidth < 768) {
+                            // Week view is also usable
+                        }
+                    }
+                });
+            });
         }
 
         async function scheduleTaskAtTime(taskId, dateTime) {
@@ -1125,12 +1633,12 @@
                 
                 if (response.ok) {
                     await loadAllTasks();
-                    showNotification('Task scheduled!', 'success');
+                    showSuccessModal('Task Scheduled', 'The task has been added to your calendar.');
                 } else {
-                    showNotification('Error scheduling task', 'error');
+                    showErrorModal('Failed to schedule task. Please try again.');
                 }
             } catch (error) {
-                showNotification('Error scheduling task', 'error');
+                showErrorModal('Error scheduling task. Please try again.');
             }
         }
 
@@ -1148,18 +1656,13 @@
                 
                 if (response.ok) {
                     await loadAllTasks();
-                    showNotification(startDate ? 'Task rescheduled' : 'Task moved to funnel', 'success');
+                    showSuccessModal('Task Updated', startDate ? 'Task has been rescheduled.' : 'Task moved to funnel.');
+                } else {
+                    showErrorModal('Failed to update task schedule.');
                 }
             } catch (error) {
                 await loadAllTasks();
-                showNotification('Error rescheduling', 'error');
-            }
-        }
-
-        async function moveTaskToFunnel() {
-            if (currentTaskId) {
-                await updateTaskSchedule(currentTaskId, null, null);
-                taskModal.hide();
+                showErrorModal('Error updating task schedule.');
             }
         }
 
@@ -1183,13 +1686,13 @@
                     task.scheduled_start = new Date(startDate).toISOString();
                     task.scheduled_end = new Date(endDate).toISOString();
                 } else {
-                    showNotification('Please select start and end times', 'warning');
+                    showWarningModal('Please select start and end times for the calendar task.');
                     return;
                 }
             }
             
             if (!task.title) {
-                showNotification('Please enter a task title', 'warning');
+                showWarningModal('Please enter a task title.');
                 return;
             }
             
@@ -1205,46 +1708,35 @@
                     addTaskModal.hide();
                     document.getElementById('quickTaskForm').reset();
                     await loadAllTasks();
-                    showNotification('Task added!', 'success');
+                    showSuccessModal('Task Added', 'Your task has been created successfully.');
                 } else {
                     const error = await response.json();
-                    showNotification(error.error || 'Error adding task', 'error');
+                    showErrorModal(error.error || 'Error adding task');
                 }
             } catch (error) {
-                showNotification('Error adding task', 'error');
+                showErrorModal('Error adding task. Please try again.');
             }
         }
 
         async function completeCurrentTask() {
-            try {
-                const response = await fetch(`${API_BASE}/api/tasks/${currentTaskId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ completed: true })
-                });
-                
-                if (response.ok) {
-                    await loadAllTasks();
-                    taskModal.hide();
-                    showNotification('Task completed! 🎉', 'success');
-                }
-            } catch (error) {
-                showNotification('Error completing task', 'error');
-            }
-        }
-
-        async function deleteCurrentTask() {
-            if (confirm('Delete this task?')) {
+            if (currentTaskId) {
                 try {
-                    const response = await fetch(`${API_BASE}/api/tasks/${currentTaskId}`, { method: 'DELETE', credentials: 'include' });
+                    const response = await fetch(`${API_BASE}/api/tasks/${currentTaskId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ completed: true })
+                    });
+                    
                     if (response.ok) {
                         await loadAllTasks();
                         taskModal.hide();
-                        showNotification('Task deleted', 'success');
+                        showSuccessModal('Task Completed! 🎉', 'Great job! Keep up the momentum.');
+                    } else {
+                        showErrorModal('Failed to complete task. Please try again.');
                     }
                 } catch (error) {
-                    showNotification('Error deleting task', 'error');
+                    showErrorModal('Error completing task. Please try again.');
                 }
             }
         }
@@ -1275,7 +1767,7 @@
         async function shareSchedule() {
             const shareEmail = document.getElementById('shareEmail').value;
             if (!shareEmail) {
-                showNotification('Please enter an email address', 'warning');
+                showWarningModal('Please enter an email address to share with.');
                 return;
             }
             
@@ -1288,15 +1780,15 @@
                 });
                 
                 if (response.ok) {
-                    showNotification(`Schedule shared with ${shareEmail}!`, 'success');
+                    showSuccessModal('Schedule Shared!', `Your schedule has been shared with ${shareEmail}.`);
                     shareModal.hide();
                     document.getElementById('shareEmail').value = '';
                 } else {
                     const error = await response.json();
-                    showNotification(error.error || 'Error sharing schedule', 'error');
+                    showErrorModal(error.error || 'Error sharing schedule');
                 }
             } catch (error) {
-                showNotification('Error sharing schedule', 'error');
+                showErrorModal('Error sharing schedule. Please try again.');
             }
         }
 
@@ -1315,12 +1807,12 @@
                     });
                     
                     if (response.ok) {
-                        showNotification(`Task shared with ${shareEmail}!`, 'success');
+                        showSuccessModal('Task Shared!', `Task has been shared with ${shareEmail}.`);
                     } else {
-                        showNotification('Error sharing task', 'error');
+                        showErrorModal('Error sharing task. Please try again.');
                     }
                 } catch (error) {
-                    showNotification('Error sharing task', 'error');
+                    showErrorModal('Error sharing task. Please try again.');
                 }
             }
         }
@@ -1342,13 +1834,13 @@
                     a.click();
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
-                    showNotification(`Exported as ${format.toUpperCase()}`, 'success');
+                    showSuccessModal('Export Complete', `Schedule exported as ${format.toUpperCase()}.`);
                     exportModal.hide();
                 } else {
-                    showNotification('Error exporting', 'error');
+                    showErrorModal('Error exporting schedule. Please try again.');
                 }
             } catch (error) {
-                showNotification('Error exporting', 'error');
+                showErrorModal('Error exporting schedule. Please try again.');
             }
         }
 
@@ -1378,13 +1870,13 @@
             const startVal = document.getElementById('scheduleStartTime').value;
             const endVal = document.getElementById('scheduleEndTime').value;
             if (!startVal || !endVal) {
-                showNotification('Please set start and end times', 'warning');
+                showWarningModal('Please set both start and end times.');
                 return;
             }
             const startDate = new Date(startVal);
             const endDate = new Date(endVal);
             if (endDate <= startDate) {
-                showNotification('End time must be after start time', 'warning');
+                showWarningModal('End time must be after start time.');
                 return;
             }
             await updateTaskSchedule(pendingScheduleTaskId, startDate, endDate);
@@ -1475,34 +1967,6 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        }
-
-        function showNotification(message, type) {
-            const toast = document.createElement('div');
-            const colors = { success: '#48BB78', error: '#F56565', warning: '#F6AD55', info: '#4299E1' };
-            toast.className = 'toast-notification';
-            toast.innerHTML = `<div style="background: white; border-left: 4px solid ${colors[type]}; padding: 10px 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'info-circle'}" style="color: ${colors[type]};"></i>
-                    <div class="small flex-grow-1">${message}</div>
-                    <button class="btn-close btn-sm" onclick="this.closest('.toast-notification').remove()"></button>
-                </div>
-            </div>`;
-            document.body.appendChild(toast);
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.style.animation = 'slideOutDown 0.3s';
-                    setTimeout(() => toast.remove(), 300);
-                }
-            }, 3000);
-        }
-
-        async function logout() {
-            if (refreshInterval) clearInterval(refreshInterval);
-            try {
-                await fetch(`${API_BASE}/api/logout`, { method: 'POST', credentials: 'include' });
-            } catch (error) {}
-            window.location.href = '/login.html';
         }
     </script>
 </body>
