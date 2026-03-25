@@ -11,3 +11,4 @@
 {"timestamp":"2026-03-24T19:36:00.945Z","level":"ERROR","message":"Error checking reminders","data":{"errno":1,"code":"SQLITE_ERROR","__augmented":true}}
 {"timestamp":"2026-03-24T19:37:00.324Z","level":"ERROR","message":"Error checking reminders","data":{"errno":1,"code":"SQLITE_ERROR","__augmented":true}}
 {"timestamp":"2026-03-24T19:38:00.657Z","level":"ERROR","message":"Error checking reminders","data":{"errno":1,"code":"SQLITE_ERROR","__augmented":true}}
+{"timestamp":"2026-03-25T06:00:41.477Z","level":"ERROR","message":"Failed to start server","data":{"code":"ECONNREFUSED"}}
