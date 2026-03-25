@@ -18,7 +18,34 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ============ DATABASE CONNECTION (PostgreSQL with retry) ============
+// ============ CONSOLE LOGGING WITH TIMESTAMPS ============
+function consoleLog(type, message, data = null) {
+    const timestamp = new Date().toISOString();
+    const logMsg = `[${timestamp}] [${type}] ${message}`;
+    
+    switch(type) {
+        case 'ERROR':
+            console.error('\x1b[31m%s\x1b[0m', logMsg);
+            break;
+        case 'SUCCESS':
+            console.log('\x1b[32m%s\x1b[0m', logMsg);
+            break;
+        case 'WARNING':
+            console.warn('\x1b[33m%s\x1b[0m', logMsg);
+            break;
+        case 'ACTIVITY':
+            console.log('\x1b[36m%s\x1b[0m', logMsg);
+            break;
+        default:
+            console.log('\x1b[90m%s\x1b[0m', logMsg);
+    }
+    
+    if (data) {
+        console.log('\x1b[90m%s\x1b[0m', `  └─ Data:`, data);
+    }
+}
+
+// ============ DATABASE CONNECTION ============
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -28,31 +55,16 @@ const pool = new Pool({
 });
 
 let dbConnected = false;
-let retryCount = 0;
-const maxRetries = 5;
 
-async function connectWithRetry() {
-  while (retryCount < maxRetries && !dbConnected) {
-    try {
-      await pool.query('SELECT 1');
-      dbConnected = true;
-      console.log('✅ PostgreSQL database connected successfully');
-      return true;
-    } catch (err) {
-      retryCount++;
-      console.log(`Database connection attempt ${retryCount}/${maxRetries} failed: ${err.message}`);
-      if (retryCount < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
+pool.connect((err, client, release) => {
+  if (err) {
+    consoleLog('ERROR', 'Database connection error:', err.message);
+  } else {
+    consoleLog('SUCCESS', 'PostgreSQL database connected');
+    dbConnected = true;
+    release();
   }
-  if (!dbConnected) {
-    console.error('❌ Failed to connect to database after multiple attempts');
-  }
-  return dbConnected;
-}
-
-connectWithRetry();
+});
 
 // ============ LOGGING SYSTEM ============
 const LOG_DIR = path.join(__dirname, 'logs');
@@ -68,12 +80,6 @@ function logToFile(stream, level, message, data = null) {
     const timestamp = new Date().toISOString();
     const logEntry = { timestamp, level, message, ...(data && { data }) };
     stream.write(JSON.stringify(logEntry) + '\n');
-    
-    const consoleMessage = `[${timestamp}] [${level}] ${message}`;
-    if (level === 'ERROR') console.error('\x1b[31m%s\x1b[0m', consoleMessage);
-    else if (level === 'WARNING') console.warn('\x1b[33m%s\x1b[0m', consoleMessage);
-    else if (level === 'SUCCESS') console.log('\x1b[32m%s\x1b[0m', consoleMessage);
-    else console.log('\x1b[36m%s\x1b[0m', consoleMessage);
 }
 
 async function logUserActivity(userId, email, action, details, req = null) {
@@ -83,10 +89,12 @@ async function logUserActivity(userId, email, action, details, req = null) {
         userId, email, action, details,
         ip: req?.ip || req?.connection?.remoteAddress || 'unknown',
         userAgent: req?.headers['user-agent'] || 'unknown',
-        method: req?.method, url: req?.originalUrl
+        method: req?.method, 
+        url: req?.originalUrl
     };
+    
     logToFile(activityLogStream, 'ACTIVITY', `User ${email}: ${action}`, logData);
-    console.log(`\x1b[36m[USER ACTIVITY] ${email}: ${action}\x1b[0m`);
+    consoleLog('ACTIVITY', `${email} - ${action}`, { details, ip: logData.ip });
     
     try {
         await pool.query(
@@ -101,7 +109,7 @@ async function logUserActivity(userId, email, action, details, req = null) {
 
 async function logEmailSent(userId, email, to, subject, status, error = null) {
     logToFile(emailLogStream, 'EMAIL', `Email to ${to}: ${subject} - ${status}`, { userId, email, to, subject, status });
-    console.log(`\x1b[33m[EMAIL] ${email} -> ${to}: ${subject} - ${status}\x1b[0m`);
+    consoleLog('EMAIL', `${email} -> ${to}: ${subject} - ${status}`);
     
     if (!dbConnected) return;
     
@@ -118,17 +126,18 @@ async function logEmailSent(userId, email, to, subject, status, error = null) {
 
 // ============ HEALTH CHECK ============
 app.get('/api/health', async (req, res) => {
+    consoleLog('INFO', 'Health check requested');
     try {
-        if (!dbConnected) await connectWithRetry();
         await pool.query('SELECT 1');
         res.json({ 
             status: 'healthy', 
             database: 'connected',
+            email: transporter ? 'configured' : 'disabled',
             uptime: process.uptime(),
-            timestamp: new Date().toISOString(),
-            environment: process.env.NODE_ENV
+            timestamp: new Date().toISOString()
         });
     } catch (err) {
+        consoleLog('ERROR', 'Health check failed:', err.message);
         res.status(500).json({ 
             status: 'unhealthy', 
             database: 'disconnected',
@@ -158,8 +167,7 @@ app.use(cors({
         if (process.env.NODE_ENV === 'production' && origin && origin.includes('onrender.com')) {
             return callback(null, true);
         }
-        console.log(`CORS blocked: ${origin}`);
-        logToFile(errorLogStream, 'WARNING', `CORS blocked request from: ${origin}`);
+        consoleLog('WARNING', `CORS blocked request from: ${origin}`);
         callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
@@ -174,11 +182,17 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 // ============ STATIC FILE SERVING ============
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
-app.get('/login', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'login.html')); });
-app.get('/index.html', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
-app.get('/login.html', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'login.html')); });
-app.get('/reset-password.html', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'reset-password.html')); });
+app.get('/', (req, res) => { 
+    consoleLog('INFO', `Serving index.html to ${req.ip}`);
+    res.sendFile(path.join(__dirname, 'public', 'index.html')); 
+});
+app.get('/login', (req, res) => { 
+    consoleLog('INFO', `Serving login.html to ${req.ip}`);
+    res.sendFile(path.join(__dirname, 'public', 'login.html')); 
+});
+app.get('/reset-password.html', (req, res) => { 
+    res.sendFile(path.join(__dirname, 'public', 'reset-password.html')); 
+});
 
 // ============ SESSION CONFIGURATION ============
 app.use(session({
@@ -187,11 +201,11 @@ app.use(session({
         tableName: 'session',
         createTableIfMissing: true,
     }),
-    secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+    secret: process.env.SESSION_SECRET || 'taskweaver_secret_key_2024',
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        secure: process.env.NODE_ENV === 'production',
+        secure: false,
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000,
         sameSite: 'lax'
@@ -211,6 +225,7 @@ app.use((req, res, next) => {
 
 // ============ DATABASE INITIALIZATION ============
 async function initializeDatabase() {
+    consoleLog('INFO', 'Initializing database...');
     const client = await pool.connect();
     try {
         // Users table
@@ -242,7 +257,7 @@ async function initializeDatabase() {
                 last_login TIMESTAMP
             )
         `);
-        console.log('✅ Users table ready');
+        consoleLog('SUCCESS', 'Users table ready');
         
         // Tasks table
         await client.query(`
@@ -283,7 +298,7 @@ async function initializeDatabase() {
                 deleted_at TIMESTAMP
             )
         `);
-        console.log('✅ Tasks table ready');
+        consoleLog('SUCCESS', 'Tasks table ready');
         
         // Shared schedules table
         await client.query(`
@@ -298,7 +313,7 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Shared schedules table ready');
+        consoleLog('SUCCESS', 'Shared schedules table ready');
         
         // Reminders table
         await client.query(`
@@ -317,7 +332,7 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Reminders table ready');
+        consoleLog('SUCCESS', 'Reminders table ready');
         
         // Activity log table
         await client.query(`
@@ -336,7 +351,7 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Activity log table ready');
+        consoleLog('SUCCESS', 'Activity log table ready');
         
         // Email log table
         await client.query(`
@@ -353,7 +368,7 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Email log table ready');
+        consoleLog('SUCCESS', 'Email log table ready');
         
         // Suggestions table
         await client.query(`
@@ -370,7 +385,7 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Suggestions table ready');
+        consoleLog('SUCCESS', 'Suggestions table ready');
         
         // Projects table
         await client.query(`
@@ -389,7 +404,7 @@ async function initializeDatabase() {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Projects table ready');
+        consoleLog('SUCCESS', 'Projects table ready');
         
         // Create indexes
         const indexes = [
@@ -413,11 +428,12 @@ async function initializeDatabase() {
         for (const index of indexes) {
             await client.query(index).catch(() => {});
         }
-        console.log('✅ All indexes created successfully');
+        consoleLog('SUCCESS', 'All indexes created');
         
         // Create demo user
         const demoEmail = 'demo@taskweaver.com';
         const existingDemo = await client.query('SELECT id FROM users WHERE email = $1', [demoEmail]);
+        
         if (existingDemo.rows.length === 0) {
             const hashedPassword = await bcrypt.hash('Demo@2024', 10);
             await client.query(
@@ -425,15 +441,15 @@ async function initializeDatabase() {
                  VALUES ($1, $2, $3, 1, 1, 'UTC', 'light', 1)`,
                 ['DEMOUSER', demoEmail, hashedPassword]
             );
-            console.log('✅ Demo user created: demo@taskweaver.com / Demo@2024');
+            consoleLog('SUCCESS', 'Demo user created: demo@taskweaver.com / Demo@2024');
         } else {
-            console.log('ℹ️ Demo user already exists');
+            consoleLog('INFO', 'Demo user already exists');
         }
         
-        console.log('✅ Database initialization complete');
+        consoleLog('SUCCESS', 'Database initialization complete');
         
     } catch (err) {
-        console.error('❌ Database initialization error:', err.message);
+        consoleLog('ERROR', 'Database initialization error:', err.message);
         throw err;
     } finally {
         client.release();
@@ -444,27 +460,69 @@ async function initializeDatabase() {
 let transporter = null;
 
 function setupEmailTransporter() {
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS && 
-        process.env.EMAIL_USER !== 'your-email@gmail.com') {
-        try {
-            transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-            });
-            transporter.verify((error) => {
-                if (error) console.log('⚠️ Email verification failed:', error.message);
-                else console.log('✅ Email server ready');
-            });
-        } catch (error) {
-            console.log('⚠️ Email setup failed:', error.message);
-            transporter = null;
-        }
-    } else {
-        console.log('⚠️ Email not configured - using demo mode');
+    consoleLog('INFO', 'Configuring email transporter...');
+    
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        consoleLog('WARNING', 'Email credentials not configured. Email notifications will be disabled.');
+        consoleLog('INFO', 'To enable email, set EMAIL_USER and EMAIL_PASS in environment variables');
+        return;
+    }
+    
+    if (process.env.EMAIL_USER === 'your-email@gmail.com') {
+        consoleLog('WARNING', 'Using placeholder email. Please update EMAIL_USER in environment variables');
+        return;
+    }
+    
+    try {
+        transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { 
+                user: process.env.EMAIL_USER, 
+                pass: process.env.EMAIL_PASS 
+            },
+            debug: false
+        });
+        
+        // Verify connection and show status
+        transporter.verify((error, success) => {
+            if (error) {
+                consoleLog('ERROR', '✗ Email server connection FAILED:', error.message);
+                consoleLog('ERROR', '  └─ Check your EMAIL_USER and EMAIL_PASS in .env file');
+                transporter = null;
+            } else {
+                consoleLog('SUCCESS', '✓ Email server CONNECTED and READY');
+                consoleLog('SUCCESS', `  └─ Using email: ${process.env.EMAIL_USER}`);
+                consoleLog('SUCCESS', `  └─ Service: Gmail (SMTP)`);
+            }
+        });
+    } catch (error) {
+        consoleLog('ERROR', 'Failed to setup email transporter:', error.message);
+        transporter = null;
     }
 }
 
-// Professional email template
+function sendEmail(to, subject, html) {
+    if (!transporter) {
+        consoleLog('WARNING', `Email not sent to ${to}: Email service not configured`);
+        return Promise.reject(new Error('Email service not configured'));
+    }
+    
+    consoleLog('INFO', `Sending email to ${to}: ${subject}`);
+    
+    return transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: to,
+        subject: subject,
+        html: html
+    }).then(info => {
+        consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject} (Message ID: ${info.messageId})`);
+        return info;
+    }).catch(error => {
+        consoleLog('ERROR', `✗ Failed to send email to ${to}:`, error.message);
+        throw error;
+    });
+}
+
 function getEmailTemplate(title, content, buttonText = null, buttonLink = null) {
     return `<!DOCTYPE html>
     <html>
@@ -606,6 +664,7 @@ function checkPasswordStrength(password) {
 
 function requireAuth(req, res, next) {
     if (!req.session?.userId) {
+        consoleLog('WARNING', `Unauthorized access attempt from ${req.ip}`);
         return res.status(401).json({ error: 'Authentication required' });
     }
     next();
@@ -614,24 +673,34 @@ function requireAuth(req, res, next) {
 // ============ AUTHENTICATION ROUTES ============
 app.post('/api/check-password-strength', (req, res) => {
     try {
-        res.json(checkPasswordStrength(req.body.password));
+        const strength = checkPasswordStrength(req.body.password);
+        consoleLog('INFO', `Password strength check: ${strength.strength}`);
+        res.json(strength);
     } catch (error) {
+        consoleLog('ERROR', 'Password strength check error:', error.message);
         res.status(500).json({ error: 'Failed to check password' });
     }
 });
 
 app.post('/api/register', async (req, res) => {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    consoleLog('INFO', `Registration attempt for email: ${email}`);
+    
+    if (!email || !password) {
+        consoleLog('WARNING', `Registration failed: Missing email or password`);
+        return res.status(400).json({ error: 'Email and password required' });
+    }
     
     const strength = checkPasswordStrength(password);
     if (strength.score < 3) {
+        consoleLog('WARNING', `Registration failed: Weak password for ${email}`);
         return res.status(400).json({ error: 'Password too weak. Use 8+ chars with uppercase, numbers, and special characters.' });
     }
     
     try {
         const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
         if (existing.rows.length > 0) {
+            consoleLog('WARNING', `Registration failed: Email already registered - ${email}`);
             return res.status(400).json({ error: 'Email already registered' });
         }
         
@@ -646,7 +715,7 @@ app.post('/api/register', async (req, res) => {
         );
         
         const userId = result.rows[0].id;
-        console.log(`\x1b[32m[REGISTRATION] New user registered: ${email} (ID: ${userId})\x1b[0m`);
+        consoleLog('SUCCESS', `New user registered: ${email} (ID: ${userId})`);
         
         if (transporter) {
             const verificationLink = `https://${req.get('host')}/api/verify-email?token=${verificationToken}`;
@@ -662,47 +731,55 @@ app.post('/api/register', async (req, res) => {
                 'Verify Email Address',
                 verificationLink
             );
-            transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: email,
-                subject: '🎉 Welcome to TaskWeaver - Verify Your Email',
-                html: emailContent
-            }).catch(error => console.log('Email send failed:', error.message));
+            
+            sendEmail(email, '🎉 Welcome to TaskWeaver - Verify Your Email', emailContent)
+                .then(() => logEmailSent(userId, email, email, 'Welcome Email', 'success'))
+                .catch(err => logEmailSent(userId, email, email, 'Welcome Email', 'failed', err));
         }
         
         await logUserActivity(userId, email, 'REGISTER', 'User registered successfully', req);
         res.json({ success: true, username, email, message: 'Registration successful! Please check your email to verify your account.' });
     } catch (err) {
-        console.error('Registration error:', err.message);
+        consoleLog('ERROR', `Registration error for ${email}:`, err.message);
         res.status(500).json({ error: 'Registration failed' });
     }
 });
 
 app.get('/api/verify-email', async (req, res) => {
     const { token } = req.query;
+    consoleLog('INFO', `Email verification attempt with token: ${token?.substring(0, 10)}...`);
+    
     try {
-        const result = await pool.query('UPDATE users SET email_verified = 1, verification_token = NULL WHERE verification_token = $1 RETURNING id', [token]);
+        const result = await pool.query('UPDATE users SET email_verified = 1, verification_token = NULL WHERE verification_token = $1 RETURNING id, email', [token]);
         if (result.rows.length > 0) {
+            consoleLog('SUCCESS', `Email verified: ${result.rows[0].email}`);
+            await logUserActivity(result.rows[0].id, result.rows[0].email, 'VERIFY_EMAIL', 'Email verified', req);
             res.redirect('/login.html?verified=true');
         } else {
+            consoleLog('WARNING', `Invalid verification token: ${token?.substring(0, 10)}...`);
             res.redirect('/login.html?error=invalid_token');
         }
-    } catch {
+    } catch (err) {
+        consoleLog('ERROR', 'Email verification error:', err.message);
         res.redirect('/login.html?error=verification_failed');
     }
 });
 
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
+    consoleLog('INFO', `Login attempt for email: ${email}`);
+    
     try {
         const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         const user = result.rows[0];
-        if (!user) return res.status(401).json({ error: 'Invalid credentials' });
         
-        console.log(`\x1b[36m[LOGIN ATTEMPT] User: ${email}\x1b[0m`);
+        if (!user) {
+            consoleLog('WARNING', `Login failed: User not found - ${email}`);
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
         
         if (user.locked_until && new Date(user.locked_until) > new Date()) {
-            console.log(`\x1b[31m[LOGIN] Account locked for: ${email}\x1b[0m`);
+            consoleLog('WARNING', `Login failed: Account locked for ${email} until ${user.locked_until}`);
             return res.status(401).json({ error: 'Account is temporarily locked. Try again later.' });
         }
         
@@ -712,7 +789,7 @@ app.post('/api/login', async (req, res) => {
             const locked = attempts >= 5 ? new Date(Date.now() + 15 * 60000) : null;
             await pool.query('UPDATE users SET failed_login_attempts = $1, last_failed_login = $2, locked_until = $3 WHERE id = $4', 
                 [attempts, new Date().toISOString(), locked, user.id]);
-            console.log(`\x1b[31m[LOGIN] Failed attempt for: ${email} (Attempt ${attempts}/5)\x1b[0m`);
+            consoleLog('WARNING', `Login failed: Invalid password for ${email} (Attempt ${attempts}/5)`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
@@ -729,11 +806,13 @@ app.post('/api/login', async (req, res) => {
         
         req.session.save((err) => {
             if (err) {
-                console.error('Session save error:', err);
+                consoleLog('ERROR', `Session save error for ${email}:`, err.message);
                 return res.status(500).json({ error: 'Session error' });
             }
-            console.log(`\x1b[32m[LOGIN] Successful login: ${email} (ID: ${user.id})\x1b[0m`);
-            console.log(`\x1b[36m[SESSION] Session ID: ${req.sessionID}\x1b[0m`);
+            
+            consoleLog('SUCCESS', `User logged in: ${email} (ID: ${user.id})`);
+            consoleLog('ACTIVITY', `Session created: ${req.sessionID}`);
+            
             logUserActivity(user.id, user.email, 'LOGIN', 'User logged in', req);
             res.json({ 
                 success: true, 
@@ -745,18 +824,19 @@ app.post('/api/login', async (req, res) => {
             });
         });
     } catch (err) {
-        console.error('Login error:', err.message);
+        consoleLog('ERROR', `Login error for ${email}:`, err.message);
         res.status(500).json({ error: 'Login failed' });
     }
 });
 
 app.get('/api/check-session', async (req, res) => {
-    console.log(`\x1b[36m[SESSION CHECK] Session ID: ${req.sessionID}\x1b[0m`);
+    consoleLog('INFO', `Session check - ID: ${req.sessionID}`);
+    
     if (req.session?.userId) {
         try {
             const result = await pool.query('SELECT email, username FROM users WHERE id = $1', [req.session.userId]);
             const user = result.rows[0];
-            console.log(`\x1b[32m[SESSION CHECK] Valid session for: ${user?.email}\x1b[0m`);
+            consoleLog('SUCCESS', `Valid session for user: ${user?.email}`);
             res.json({ 
                 authenticated: true, 
                 userId: req.session.userId,
@@ -764,27 +844,40 @@ app.get('/api/check-session', async (req, res) => {
                 email: user?.email || req.session.email
             });
         } catch (err) {
+            consoleLog('ERROR', 'Session check database error:', err.message);
             res.json({ authenticated: true, username: req.session.username, email: req.session.email });
         }
     } else {
-        console.log(`\x1b[33m[SESSION CHECK] No active session\x1b[0m`);
+        consoleLog('INFO', 'No active session found');
         res.json({ authenticated: false });
     }
 });
 
 app.post('/api/logout', (req, res) => {
     if (req.session.userId) {
-        console.log(`\x1b[36m[LOGOUT] User: ${req.session.email}\x1b[0m`);
+        consoleLog('ACTIVITY', `User logging out: ${req.session.email}`);
         logUserActivity(req.session.userId, req.session.email, 'LOGOUT', 'User logged out', req);
     }
-    req.session.destroy(() => res.json({ success: true }));
+    req.session.destroy((err) => {
+        if (err) {
+            consoleLog('ERROR', 'Logout error:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        consoleLog('SUCCESS', 'User logged out successfully');
+        res.json({ success: true });
+    });
 });
 
 app.post('/api/forgot-password', async (req, res) => {
     const { email } = req.body;
+    consoleLog('INFO', `Password reset request for: ${email}`);
+    
     try {
         const user = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-        if (user.rows.length === 0) return res.status(404).json({ error: 'Email not found' });
+        if (user.rows.length === 0) {
+            consoleLog('WARNING', `Password reset: Email not found - ${email}`);
+            return res.status(404).json({ error: 'Email not found' });
+        }
         
         const token = crypto.randomBytes(32).toString('hex');
         const expiry = new Date(Date.now() + 3600000);
@@ -792,40 +885,57 @@ app.post('/api/forgot-password', async (req, res) => {
         
         const resetLink = `https://${req.get('host')}/reset-password.html?token=${token}`;
         if (transporter) {
-            transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: email,
-                subject: 'Password Reset - TaskWeaver',
-                html: getEmailTemplate('Password Reset', 'Click the button below to reset your password. This link expires in 1 hour.', 'Reset Password', resetLink)
-            }).catch(() => {});
-            await logEmailSent(user.rows[0].id, email, email, 'Password Reset', 'success');
+            const emailContent = getEmailTemplate(
+                'Password Reset',
+                'Click the button below to reset your password. This link expires in 1 hour.',
+                'Reset Password',
+                resetLink
+            );
+            sendEmail(email, 'Password Reset - TaskWeaver', emailContent)
+                .then(() => logEmailSent(user.rows[0].id, email, email, 'Password Reset', 'success'))
+                .catch(err => logEmailSent(user.rows[0].id, email, email, 'Password Reset', 'failed', err));
         }
+        
+        consoleLog('SUCCESS', `Password reset email sent to: ${email}`);
         res.json({ success: true, message: 'Password reset email sent' });
     } catch (err) {
+        consoleLog('ERROR', `Password reset error for ${email}:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.post('/api/reset-password', async (req, res) => {
     const { token, newPassword } = req.body;
+    consoleLog('INFO', `Password reset attempt with token: ${token?.substring(0, 10)}...`);
+    
     const strength = checkPasswordStrength(newPassword);
-    if (strength.score < 3) return res.status(400).json({ error: 'Password too weak.' });
+    if (strength.score < 3) {
+        consoleLog('WARNING', 'Password reset: Weak password');
+        return res.status(400).json({ error: 'Password too weak.' });
+    }
     
     try {
-        const user = await pool.query('SELECT id FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()', [token]);
-        if (user.rows.length === 0) return res.status(400).json({ error: 'Invalid or expired token' });
+        const user = await pool.query('SELECT id, email FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()', [token]);
+        if (user.rows.length === 0) {
+            consoleLog('WARNING', `Password reset: Invalid or expired token`);
+            return res.status(400).json({ error: 'Invalid or expired token' });
+        }
         
         const hashed = await bcrypt.hash(newPassword, 10);
         await pool.query('UPDATE users SET password = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2', [hashed, user.rows[0].id]);
+        
+        consoleLog('SUCCESS', `Password reset successful for: ${user.rows[0].email}`);
         await logUserActivity(user.rows[0].id, user.rows[0].email, 'PASSWORD_RESET', 'Password reset successfully', req);
         res.json({ success: true, message: 'Password reset successful' });
     } catch (err) {
+        consoleLog('ERROR', 'Password reset error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 // ============ USER SETTINGS ============
 app.get('/api/settings', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading settings for user: ${req.session.email}`);
     try {
         const result = await pool.query(
             'SELECT reminder_interval, auto_reminders, email_notifications, push_notifications, timezone, theme FROM users WHERE id = $1',
@@ -841,39 +951,35 @@ app.get('/api/settings', requireAuth, async (req, res) => {
             theme: user?.theme || 'light'
         });
     } catch (err) {
+        consoleLog('ERROR', `Failed to load settings for ${req.session.email}:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.put('/api/settings', requireAuth, async (req, res) => {
     const { reminder_interval, auto_reminders, email_notifications, push_notifications, timezone, theme } = req.body;
-    const updates = [];
-    const values = [];
-    let paramCounter = 1;
-    
-    if (reminder_interval !== undefined) { updates.push(`reminder_interval = $${paramCounter++}`); values.push(reminder_interval); }
-    if (auto_reminders !== undefined) { updates.push(`auto_reminders = $${paramCounter++}`); values.push(auto_reminders ? 1 : 0); }
-    if (email_notifications !== undefined) { updates.push(`email_notifications = $${paramCounter++}`); values.push(email_notifications ? 1 : 0); }
-    if (push_notifications !== undefined) { updates.push(`push_notifications = $${paramCounter++}`); values.push(push_notifications ? 1 : 0); }
-    if (timezone !== undefined) { updates.push(`timezone = $${paramCounter++}`); values.push(timezone); }
-    if (theme !== undefined) { updates.push(`theme = $${paramCounter++}`); values.push(theme); }
-    
-    if (updates.length === 0) return res.status(400).json({ error: 'No updates provided' });
-    
-    values.push(req.session.userId);
-    const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCounter}`;
+    consoleLog('INFO', `Updating settings for user: ${req.session.email}`);
     
     try {
-        await pool.query(query, values);
+        await pool.query(
+            `UPDATE users SET reminder_interval = COALESCE($1, reminder_interval), auto_reminders = COALESCE($2, auto_reminders),
+             email_notifications = COALESCE($3, email_notifications), push_notifications = COALESCE($4, push_notifications),
+             timezone = COALESCE($5, timezone), theme = COALESCE($6, theme)
+             WHERE id = $7`,
+            [reminder_interval, auto_reminders ? 1 : 0, email_notifications ? 1 : 0, push_notifications ? 1 : 0, timezone, theme, req.session.userId]
+        );
+        consoleLog('SUCCESS', `Settings updated for ${req.session.email}`);
         await logUserActivity(req.session.userId, req.session.email, 'SETTINGS_UPDATED', 'Settings updated', req);
         res.json({ success: true });
     } catch (err) {
+        consoleLog('ERROR', `Failed to update settings for ${req.session.email}:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 // ============ TASK ROUTES ============
 app.get('/api/tasks', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading tasks for user: ${req.session.email}`);
     try {
         const result = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND (deleted_at IS NULL OR deleted_at = '') 
@@ -882,13 +988,16 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
              END, deadline ASC NULLS LAST, scheduled_start ASC NULLS LAST`,
             [req.session.userId]
         );
+        consoleLog('SUCCESS', `Loaded ${result.rows.length} tasks for ${req.session.email}`);
         res.json(result.rows || []);
     } catch (err) {
+        consoleLog('ERROR', `Failed to load tasks for ${req.session.email}:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.get('/api/unscheduled-tasks', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading unscheduled tasks for user: ${req.session.email}`);
     try {
         const result = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND (scheduled_start IS NULL OR scheduled_start = '') 
@@ -899,11 +1008,13 @@ app.get('/api/unscheduled-tasks', requireAuth, async (req, res) => {
         );
         res.json(result.rows || []);
     } catch (err) {
+        consoleLog('ERROR', `Failed to load unscheduled tasks:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.get('/api/upcoming-deadlines', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading upcoming deadlines for user: ${req.session.email}`);
     try {
         const result = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND deadline IS NOT NULL 
@@ -912,11 +1023,13 @@ app.get('/api/upcoming-deadlines', requireAuth, async (req, res) => {
         );
         res.json(result.rows || []);
     } catch (err) {
+        consoleLog('ERROR', `Failed to load upcoming deadlines:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.get('/api/overdue-tasks', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading overdue tasks for user: ${req.session.email}`);
     try {
         const result = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND deadline IS NOT NULL 
@@ -925,12 +1038,15 @@ app.get('/api/overdue-tasks', requireAuth, async (req, res) => {
         );
         res.json(result.rows || []);
     } catch (err) {
+        consoleLog('ERROR', `Failed to load overdue tasks:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.post('/api/tasks', requireAuth, async (req, res) => {
     const { title, description, project, category, severity, priority, deadline, is_recurring, recurrence_pattern, scheduled_start, scheduled_end, estimated_duration, tags } = req.body;
+    consoleLog('INFO', `Creating task for user: ${req.session.email} - Title: ${title}`);
+    
     if (!title) return res.status(400).json({ error: 'Task title is required' });
     
     try {
@@ -951,18 +1067,22 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
                 `INSERT INTO reminders (user_id, user_email, task_id, reminder_time, reminder_type) VALUES ($1, $2, $3, $4, 'scheduled')`,
                 [req.session.userId, req.session.email, taskId, reminderTime.toISOString()]
             );
+            consoleLog('INFO', `Reminder created for task ${taskId} at ${reminderTime}`);
         }
         
-        console.log(`\x1b[36m[TASK] ${req.session.email} created task: ${title}\x1b[0m`);
+        consoleLog('SUCCESS', `Task created for ${req.session.email}: ${title} (ID: ${taskId})`);
         await logUserActivity(req.session.userId, req.session.email, 'TASK_CREATED', `Task: ${title}`, req);
         res.json({ id: taskId, message: 'Task created successfully' });
     } catch (err) {
-        console.error('Task creation error:', err.message);
+        consoleLog('ERROR', `Failed to create task for ${req.session.email}:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.put('/api/tasks/:id', requireAuth, async (req, res) => {
+    const taskId = req.params.id;
+    consoleLog('INFO', `Updating task ${taskId} for user: ${req.session.email}`);
+    
     const { title, description, project, category, severity, priority, deadline, scheduled_start, scheduled_end, completed, actual_start, actual_end, completion_notes, tags } = req.body;
     const updates = [];
     const values = [];
@@ -991,32 +1111,120 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
     
     if (updates.length === 0) return res.status(400).json({ error: 'No updates provided' });
     
-    values.push(req.params.id, req.session.userId);
+    values.push(taskId, req.session.userId);
     const query = `UPDATE tasks SET ${updates.join(', ')} WHERE id = $${paramCounter++} AND user_id = $${paramCounter}`;
     
     try {
         const result = await pool.query(query, values);
-        await logUserActivity(req.session.userId, req.session.email, 'TASK_UPDATED', `Task ID: ${req.params.id}`, req);
+        consoleLog('SUCCESS', `Task ${taskId} updated for ${req.session.email}`);
+        await logUserActivity(req.session.userId, req.session.email, 'TASK_UPDATED', `Task ID: ${taskId}`, req);
         res.json({ updated: result.rowCount });
     } catch (err) {
+        consoleLog('ERROR', `Failed to update task ${taskId}:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
+    const taskId = req.params.id;
+    consoleLog('INFO', `Deleting task ${taskId} for user: ${req.session.email}`);
+    
     try {
-        const taskResult = await pool.query('SELECT title FROM tasks WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+        const taskResult = await pool.query('SELECT title FROM tasks WHERE id = $1 AND user_id = $2', [taskId, req.session.userId]);
         const task = taskResult.rows[0];
-        const result = await pool.query('DELETE FROM tasks WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
-        if (task) await logUserActivity(req.session.userId, req.session.email, 'TASK_DELETED', `Task: ${task.title}`, req);
+        const result = await pool.query('DELETE FROM tasks WHERE id = $1 AND user_id = $2', [taskId, req.session.userId]);
+        
+        if (task) {
+            consoleLog('SUCCESS', `Task deleted: ${task.title} (ID: ${taskId}) for ${req.session.email}`);
+            await logUserActivity(req.session.userId, req.session.email, 'TASK_DELETED', `Task: ${task.title}`, req);
+        }
         res.json({ deleted: result.rowCount });
     } catch (err) {
+        consoleLog('ERROR', `Failed to delete task ${taskId}:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============ PROJECTS ============
+app.get('/api/projects', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading projects for user: ${req.session.email}`);
+    try {
+        const result = await pool.query('SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC', [req.session.userId]);
+        if (result.rows.length === 0) {
+            res.json([
+                { name: 'FHC Portal', status: 'active', progress: 65, color: '#6B46C1', description: 'Full-stack web portal' },
+                { name: 'Customer Repair App', status: 'active', progress: 40, color: '#48BB78', description: 'Mobile repair tracking' },
+                { name: 'Paint Tracks', status: 'active', progress: 80, color: '#F6AD55', description: 'Project management tool' }
+            ]);
+        } else {
+            res.json(result.rows);
+        }
+    } catch (err) {
+        consoleLog('ERROR', `Failed to load projects:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/projects', requireAuth, async (req, res) => {
+    const { name, description, color, status, progress, start_date, end_date } = req.body;
+    consoleLog('INFO', `Creating project for user: ${req.session.email} - Name: ${name}`);
+    
+    if (!name) return res.status(400).json({ error: 'Project name required' });
+    
+    try {
+        const result = await pool.query(
+            `INSERT INTO projects (user_id, user_email, name, description, color, status, progress, start_date, end_date)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+            [req.session.userId, req.session.email, name, description, color, status || 'active', progress || 0, start_date, end_date]
+        );
+        consoleLog('SUCCESS', `Project created: ${name} for ${req.session.email}`);
+        await logUserActivity(req.session.userId, req.session.email, 'PROJECT_CREATED', `Project: ${name}`, req);
+        res.json({ id: result.rows[0].id, message: 'Project created' });
+    } catch (err) {
+        consoleLog('ERROR', `Failed to create project:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/projects/:id', requireAuth, async (req, res) => {
+    const projectId = req.params.id;
+    consoleLog('INFO', `Updating project ${projectId} for user: ${req.session.email}`);
+    
+    const { name, description, color, status, progress, start_date, end_date } = req.body;
+    try {
+        await pool.query(
+            `UPDATE projects SET name = COALESCE($1, name), description = COALESCE($2, description), color = COALESCE($3, color),
+             status = COALESCE($4, status), progress = COALESCE($5, progress), start_date = COALESCE($6, start_date),
+             end_date = COALESCE($7, end_date), updated_at = NOW() WHERE id = $8 AND user_id = $9`,
+            [name, description, color, status, progress, start_date, end_date, projectId, req.session.userId]
+        );
+        consoleLog('SUCCESS', `Project ${projectId} updated for ${req.session.email}`);
+        await logUserActivity(req.session.userId, req.session.email, 'PROJECT_UPDATED', `Project ID: ${projectId}`, req);
+        res.json({ success: true });
+    } catch (err) {
+        consoleLog('ERROR', `Failed to update project:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/projects/:id', requireAuth, async (req, res) => {
+    const projectId = req.params.id;
+    consoleLog('INFO', `Deleting project ${projectId} for user: ${req.session.email}`);
+    
+    try {
+        await pool.query('DELETE FROM projects WHERE id = $1 AND user_id = $2', [projectId, req.session.userId]);
+        consoleLog('SUCCESS', `Project ${projectId} deleted for ${req.session.email}`);
+        await logUserActivity(req.session.userId, req.session.email, 'PROJECT_DELETED', `Project ID: ${projectId}`, req);
+        res.json({ success: true });
+    } catch (err) {
+        consoleLog('ERROR', `Failed to delete project:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 // ============ SUGGESTIONS ============
 app.get('/api/suggestions', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading suggestions for user: ${req.session.email}`);
     try {
         const suggestions = await pool.query(
             'SELECT * FROM suggestions WHERE user_id = $1 AND is_read = 0 ORDER BY priority DESC, created_at ASC LIMIT 10',
@@ -1049,73 +1257,18 @@ app.get('/api/suggestions', requireAuth, async (req, res) => {
             res.json(suggestions.rows.map(s => s.suggestion));
         }
     } catch (err) {
+        consoleLog('ERROR', `Failed to load suggestions:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-// ============ PROJECTS ============
-app.get('/api/projects', requireAuth, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC', [req.session.userId]);
-        if (result.rows.length === 0) {
-            res.json([
-                { name: 'FHC Portal', status: 'active', progress: 65, color: '#6B46C1', description: 'Full-stack web portal' },
-                { name: 'Customer Repair App', status: 'active', progress: 40, color: '#48BB78', description: 'Mobile repair tracking' },
-                { name: 'Paint Tracks', status: 'active', progress: 80, color: '#F6AD55', description: 'Project management tool' }
-            ]);
-        } else {
-            res.json(result.rows);
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/projects', requireAuth, async (req, res) => {
-    const { name, description, color, status, progress, start_date, end_date } = req.body;
-    if (!name) return res.status(400).json({ error: 'Project name required' });
-    
-    try {
-        const result = await pool.query(
-            `INSERT INTO projects (user_id, user_email, name, description, color, status, progress, start_date, end_date)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-            [req.session.userId, req.session.email, name, description, color, status || 'active', progress || 0, start_date, end_date]
-        );
-        res.json({ id: result.rows[0].id, message: 'Project created' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.put('/api/projects/:id', requireAuth, async (req, res) => {
-    const { name, description, color, status, progress, start_date, end_date } = req.body;
-    try {
-        await pool.query(
-            `UPDATE projects SET name = COALESCE($1, name), description = COALESCE($2, description), color = COALESCE($3, color),
-             status = COALESCE($4, status), progress = COALESCE($5, progress), start_date = COALESCE($6, start_date),
-             end_date = COALESCE($7, end_date), updated_at = NOW() WHERE id = $8 AND user_id = $9`,
-            [name, description, color, status, progress, start_date, end_date, req.params.id, req.session.userId]
-        );
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.delete('/api/projects/:id', requireAuth, async (req, res) => {
-    try {
-        await pool.query('DELETE FROM projects WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ============ SHARING AND EXPORT ROUTES ============
+// ============ SHARING AND EXPORT ============
 app.post('/api/share-schedule', requireAuth, async (req, res) => {
     const { shareWithEmail, shareType = 'view' } = req.body;
     const userEmail = req.session.email;
     const userId = req.session.userId;
+    
+    consoleLog('INFO', `Sharing schedule from ${userEmail} to ${shareWithEmail}`);
     
     if (!shareWithEmail) {
         return res.status(400).json({ error: 'Recipient email is required' });
@@ -1124,6 +1277,7 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
     try {
         const recipientResult = await pool.query('SELECT id, email FROM users WHERE email = $1', [shareWithEmail]);
         if (recipientResult.rows.length === 0) {
+            consoleLog('WARNING', `Share failed: Recipient not found - ${shareWithEmail}`);
             return res.status(404).json({ error: 'Recipient email not found in TaskWeaver' });
         }
         
@@ -1166,29 +1320,27 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
         );
         
         if (transporter) {
-            transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: shareWithEmail,
-                subject: `📅 Schedule Shared with You - TaskWeaver`,
-                html: emailContent,
-                attachments: [
-                    { filename: `schedule_${userEmail.replace('@', '_')}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
-                    { filename: `schedule_${userEmail.replace('@', '_')}.xlsx`, content: excelBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-                    { filename: `schedule_${userEmail.replace('@', '_')}.csv`, content: csvData, contentType: 'text/csv' }
-                ]
-            }).catch(error => console.log('Share email failed:', error.message));
-            await logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'success');
+            sendEmail(shareWithEmail, `📅 Schedule Shared with You - TaskWeaver`, emailContent)
+                .then(() => {
+                    logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'success');
+                    consoleLog('SUCCESS', `Schedule shared from ${userEmail} to ${shareWithEmail}`);
+                })
+                .catch(err => {
+                    logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'failed', err);
+                    consoleLog('ERROR', `Failed to send share email:`, err.message);
+                });
         }
         
-        console.log(`\x1b[32m[SHARE] Schedule shared from ${userEmail} to ${shareWithEmail}\x1b[0m`);
         res.json({ success: true, message: `Schedule shared with ${shareWithEmail}` });
     } catch (err) {
+        consoleLog('ERROR', `Share schedule error:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.get('/api/view-shared-schedule', async (req, res) => {
     const { token, format = 'json' } = req.query;
+    consoleLog('INFO', `Viewing shared schedule with token: ${token?.substring(0, 10)}...`);
     
     try {
         const shareResult = await pool.query(
@@ -1198,6 +1350,7 @@ app.get('/api/view-shared-schedule', async (req, res) => {
         const share = shareResult.rows[0];
         
         if (!share) {
+            consoleLog('WARNING', `Invalid or expired share token: ${token?.substring(0, 10)}...`);
             return res.status(404).json({ error: 'Invalid or expired share link' });
         }
         
@@ -1232,6 +1385,7 @@ app.get('/api/view-shared-schedule', async (req, res) => {
                 res.json({ sharedBy: share.user_email, tasks, shareType: share.share_type });
         }
     } catch (err) {
+        consoleLog('ERROR', `View shared schedule error:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1241,6 +1395,8 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
     const userId = req.session.userId;
     const userEmail = req.session.email;
     
+    consoleLog('INFO', `Exporting schedule for ${userEmail} as ${format}`);
+    
     try {
         const result = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '') 
@@ -1249,7 +1405,6 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
         );
         const tasks = result.rows;
         
-        console.log(`\x1b[36m[EXPORT] User ${userEmail} exporting schedule as ${format}\x1b[0m`);
         await logUserActivity(userId, userEmail, 'EXPORT_SCHEDULE', `Exported schedule as ${format}`, req);
         
         switch(format) {
@@ -1276,12 +1431,14 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
                 res.json(tasks);
         }
     } catch (err) {
+        consoleLog('ERROR', `Export schedule error:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 // ============ STATISTICS ============
 app.get('/api/user-stats', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading stats for user: ${req.session.email}`);
     try {
         const result = await pool.query(`
             SELECT 
@@ -1297,11 +1454,13 @@ app.get('/api/user-stats', requireAuth, async (req, res) => {
         );
         res.json(result.rows[0] || {});
     } catch (err) {
+        consoleLog('ERROR', `Failed to load stats:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.get('/api/activity', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Loading activity log for user: ${req.session.email}`);
     try {
         const result = await pool.query(
             'SELECT * FROM activity_log WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
@@ -1309,41 +1468,40 @@ app.get('/api/activity', requireAuth, async (req, res) => {
         );
         res.json(result.rows || []);
     } catch (err) {
+        consoleLog('ERROR', `Failed to load activity:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
 app.get('/api/debug', async (req, res) => {
+    consoleLog('INFO', 'Debug endpoint called');
     try {
         const users = await pool.query('SELECT COUNT(*) FROM users');
         const tasks = await pool.query('SELECT COUNT(*) FROM tasks');
         const projects = await pool.query('SELECT COUNT(*) FROM projects');
-        const reminders = await pool.query('SELECT COUNT(*) FROM reminders');
-        const tables = await pool.query(`
-            SELECT table_name FROM information_schema.tables 
-            WHERE table_schema = 'public' ORDER BY table_name
-        `);
-        
         res.json({
             status: 'ok',
             database: 'connected',
+            email: transporter ? 'configured' : 'disabled',
             userCount: parseInt(users.rows[0].count),
             taskCount: parseInt(tasks.rows[0].count),
             projectCount: parseInt(projects.rows[0].count),
-            reminderCount: parseInt(reminders.rows[0].count),
-            tables: tables.rows.map(t => t.table_name),
             environment: process.env.NODE_ENV,
             port: port,
             nodeVersion: process.version
         });
     } catch (error) {
+        consoleLog('ERROR', 'Debug endpoint error:', error.message);
         res.status(500).json({ error: error.message, databaseConnected: false });
     }
 });
 
 // ============ REMINDER SYSTEM ============
 async function checkScheduledReminders() {
-    if (!dbConnected || !transporter) return;
+    if (!dbConnected || !transporter) {
+        if (!transporter) consoleLog('WARNING', 'Reminder check skipped: Email not configured');
+        return;
+    }
     
     try {
         const result = await pool.query(`
@@ -1359,6 +1517,9 @@ async function checkScheduledReminders() {
         `);
         
         const reminders = result.rows;
+        if (reminders.length > 0) {
+            consoleLog('INFO', `Found ${reminders.length} reminders to process`);
+        }
         
         for (const reminder of reminders) {
             const emailContent = getEmailTemplate(
@@ -1374,25 +1535,21 @@ async function checkScheduledReminders() {
                 <p>Stay focused and complete your task on time! 💪</p>`
             );
             
-            transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: reminder.user_email,
-                subject: `🔔 Task Reminder: ${reminder.title}`,
-                html: emailContent
-            }, async (error) => {
-                if (!error) {
+            sendEmail(reminder.user_email, `🔔 Task Reminder: ${reminder.title}`, emailContent)
+                .then(async () => {
                     await pool.query('UPDATE reminders SET sent = 1, sent_at = NOW() WHERE id = $1', [reminder.id]);
                     await logEmailSent(reminder.user_id, reminder.user_email, reminder.user_email, `Reminder: ${reminder.title}`, 'success');
                     await pool.query('UPDATE tasks SET reminder_count = reminder_count + 1, last_reminder_sent = NOW() WHERE id = $1', [reminder.task_id]);
-                    console.log(`\x1b[32m[REMINDER] Sent to ${reminder.user_email}: ${reminder.title}\x1b[0m`);
-                } else {
+                    consoleLog('SUCCESS', `Reminder sent to ${reminder.user_email}: ${reminder.title}`);
+                })
+                .catch(async (error) => {
                     await logEmailSent(reminder.user_id, reminder.user_email, reminder.user_email, `Reminder: ${reminder.title}`, 'failed', error);
                     await pool.query('UPDATE reminders SET retry_count = retry_count + 1, last_error = $1 WHERE id = $2', [error.message, reminder.id]);
-                }
-            });
+                    consoleLog('ERROR', `Failed to send reminder for ${reminder.title}:`, error.message);
+                });
         }
     } catch (err) {
-        logToFile(errorLogStream, 'ERROR', 'Error checking reminders', err);
+        consoleLog('ERROR', 'Error checking reminders:', err.message);
     }
 }
 
@@ -1429,23 +1586,19 @@ async function checkDeadlineReminders() {
                 <p>Don't forget to complete this task before the deadline! 🚀</p>`
             );
             
-            transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: task.user_email,
-                subject: `⚠️ DEADLINE APPROACHING: ${task.title}`,
-                html: emailContent
-            }, async (error) => {
-                if (!error) {
+            sendEmail(task.user_email, `⚠️ DEADLINE APPROACHING: ${task.title}`, emailContent)
+                .then(async () => {
                     await pool.query('UPDATE tasks SET deadline_reminder_sent = 1 WHERE id = $1', [task.id]);
                     await logEmailSent(task.user_id, task.user_email, task.user_email, `Deadline: ${task.title}`, 'success');
-                    console.log(`\x1b[33m[DEADLINE] Reminder sent to ${task.user_email}: ${task.title} due in ${hoursLeft}h\x1b[0m`);
-                } else {
+                    consoleLog('SUCCESS', `Deadline reminder sent to ${task.user_email}: ${task.title} due in ${hoursLeft}h`);
+                })
+                .catch(async (error) => {
                     await logEmailSent(task.user_id, task.user_email, task.user_email, `Deadline: ${task.title}`, 'failed', error);
-                }
-            });
+                    consoleLog('ERROR', `Failed to send deadline reminder for ${task.title}:`, error.message);
+                });
         }
     } catch (err) {
-        logToFile(errorLogStream, 'ERROR', 'Error checking deadline reminders', err);
+        consoleLog('ERROR', 'Error checking deadline reminders:', err.message);
     }
 }
 
@@ -1481,23 +1634,19 @@ async function checkOverdueTasks() {
                 <p>Please address this overdue task as soon as possible! ⚠️</p>`
             );
             
-            transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: task.user_email,
-                subject: `⚠️ OVERDUE TASK: ${task.title}`,
-                html: emailContent
-            }, async (error) => {
-                if (!error) {
+            sendEmail(task.user_email, `⚠️ OVERDUE TASK: ${task.title}`, emailContent)
+                .then(async () => {
                     await pool.query('UPDATE tasks SET overdue_reminder_sent = 1 WHERE id = $1', [task.id]);
                     await logEmailSent(task.user_id, task.user_email, task.user_email, `Overdue: ${task.title}`, 'success');
-                    console.log(`\x1b[31m[OVERDUE] Alert sent to ${task.user_email}: ${task.title} overdue by ${daysOverdue}d\x1b[0m`);
-                } else {
+                    consoleLog('SUCCESS', `Overdue alert sent to ${task.user_email}: ${task.title} overdue by ${daysOverdue}d`);
+                })
+                .catch(async (error) => {
                     await logEmailSent(task.user_id, task.user_email, task.user_email, `Overdue: ${task.title}`, 'failed', error);
-                }
-            });
+                    consoleLog('ERROR', `Failed to send overdue alert for ${task.title}:`, error.message);
+                });
         }
     } catch (err) {
-        logToFile(errorLogStream, 'ERROR', 'Error checking overdue tasks', err);
+        consoleLog('ERROR', 'Error checking overdue tasks:', err.message);
     }
 }
 
@@ -1507,26 +1656,29 @@ cron.schedule('*/30 * * * *', () => { checkDeadlineReminders(); checkOverdueTask
 
 // Daily cleanup
 cron.schedule('0 2 * * *', async () => {
+    consoleLog('INFO', 'Running daily cleanup...');
     try {
-        await pool.query("DELETE FROM activity_log WHERE created_at < NOW() - INTERVAL '90 days'");
-        await pool.query("DELETE FROM reminders WHERE created_at < NOW() - INTERVAL '30 days'");
-        await pool.query("DELETE FROM email_log WHERE created_at < NOW() - INTERVAL '180 days'");
-        await pool.query("DELETE FROM suggestions WHERE created_at < NOW() - INTERVAL '30 days' AND is_read = 1");
-        await pool.query("DELETE FROM shared_schedules WHERE expires_at < NOW()");
-        console.log('✅ Daily cleanup completed');
+        const result1 = await pool.query("DELETE FROM activity_log WHERE created_at < NOW() - INTERVAL '90 days'");
+        const result2 = await pool.query("DELETE FROM reminders WHERE created_at < NOW() - INTERVAL '30 days'");
+        const result3 = await pool.query("DELETE FROM email_log WHERE created_at < NOW() - INTERVAL '180 days'");
+        const result4 = await pool.query("DELETE FROM suggestions WHERE created_at < NOW() - INTERVAL '30 days' AND is_read = 1");
+        const result5 = await pool.query("DELETE FROM shared_schedules WHERE expires_at < NOW()");
+        consoleLog('SUCCESS', `Cleanup complete: ${result1.rowCount} activities, ${result2.rowCount} reminders, ${result3.rowCount} emails, ${result4.rowCount} suggestions, ${result5.rowCount} shares`);
     } catch (err) {
-        logToFile(errorLogStream, 'ERROR', 'Error during cleanup', err);
+        consoleLog('ERROR', 'Cleanup error:', err.message);
     }
 });
 
 // ============ ERROR HANDLING ============
 app.use((err, req, res, next) => {
+    consoleLog('ERROR', 'Unhandled error:', err.message);
     logToFile(errorLogStream, 'ERROR', 'Unhandled error', err);
     res.status(500).json({ error: 'Internal server error' });
 });
 
 app.use((req, res) => {
-    res.status(404).json({ error: 'Route not found' });
+    consoleLog('WARNING', `404 - Route not found: ${req.method} ${req.url}`);
+    res.status(404).json({ error: 'Not found' });
 });
 
 // ============ SERVER STARTUP ============
@@ -1536,19 +1688,42 @@ async function startServer() {
         setupEmailTransporter();
         
         app.listen(port, '0.0.0.0', () => {
-            console.log('\x1b[36m%s\x1b[0m', `\n🚀 TaskWeaver server running on port ${port}`);
-            console.log('\x1b[32m%s\x1b[0m', `📧 Email: ${transporter ? 'configured' : 'demo mode'}`);
-            console.log('\x1b[32m%s\x1b[0m', `🐘 PostgreSQL: ${dbConnected ? 'connected' : 'waiting...'}`);
-            console.log('\x1b[33m%s\x1b[0m', `⏰ Reminder system active (checking every minute)`);
-            console.log('\x1b[33m%s\x1b[0m', `📅 Schedule sharing enabled with PDF/Excel/CSV exports`);
-            console.log('\x1b[32m%s\x1b[0m', `\n📝 Demo Login: demo@taskweaver.com / Demo@2024`);
-            console.log('\x1b[36m%s\x1b[0m', `🩺 Health check: http://localhost:${port}/api/health\n`);
+            consoleLog('SUCCESS', `\n╔══════════════════════════════════════════════════════════════╗`);
+            consoleLog('SUCCESS', `║                    🚀 TASKWEAVER SERVER 🚀                      ║`);
+            consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
+            consoleLog('SUCCESS', `║  Port: ${port.padEnd(55)}║`);
+            consoleLog('SUCCESS', `║  Database: ${dbConnected ? '✓ CONNECTED'.padEnd(52) : '✗ DISCONNECTED'.padEnd(52)}║`);
+            consoleLog('SUCCESS', `║  Email: ${transporter ? '✓ CONNECTED & READY'.padEnd(52) : '✗ NOT CONFIGURED'.padEnd(52)}║`);
+            if (transporter) {
+                consoleLog('SUCCESS', `║    └─ Using: ${process.env.EMAIL_USER.padEnd(52)}║`);
+            }
+            consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
+            consoleLog('SUCCESS', `║  Features Active:                                            ║`);
+            consoleLog('SUCCESS', `║    ✓ Task Management                                         ║`);
+            consoleLog('SUCCESS', `║    ✓ Project Management                                      ║`);
+            consoleLog('SUCCESS', `║    ✓ Reminder System (every minute)                          ║`);
+            consoleLog('SUCCESS', `║    ✓ Schedule Sharing (PDF/Excel/CSV)                        ║`);
+            consoleLog('SUCCESS', `║    ✓ Email Notifications ${transporter ? '✓ ENABLED'.padEnd(41) : '✗ DISABLED'.padEnd(41)}║`);
+            consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
+            consoleLog('SUCCESS', `║  Demo Login:                                                 ║`);
+            consoleLog('SUCCESS', `║    📧 demo@taskweaver.com                                    ║`);
+            consoleLog('SUCCESS', `║    🔑 Demo@2024                                               ║`);
+            consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
+            consoleLog('SUCCESS', `║  Health: http://localhost:${port}/api/health${' '.repeat(47 - port.toString().length)}║`);
+            consoleLog('SUCCESS', `║  Debug:  http://localhost:${port}/api/debug${' '.repeat(48 - port.toString().length)}║`);
+            consoleLog('SUCCESS', `╚══════════════════════════════════════════════════════════════╝\n`);
         });
         
-        process.on('SIGTERM', () => { pool.end(() => process.exit(0)); });
-        process.on('SIGINT', () => { pool.end(() => process.exit(0)); });
+        process.on('SIGTERM', () => { 
+            consoleLog('INFO', 'SIGTERM received, shutting down...');
+            pool.end(() => process.exit(0)); 
+        });
+        process.on('SIGINT', () => { 
+            consoleLog('INFO', 'SIGINT received, shutting down...');
+            pool.end(() => process.exit(0)); 
+        });
     } catch (error) {
-        console.error('\x1b[31m%s\x1b[0m', 'Failed to start server:', error.message);
+        consoleLog('ERROR', 'Failed to start server:', error.message);
         process.exit(1);
     }
 }
