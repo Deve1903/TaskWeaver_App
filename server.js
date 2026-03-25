@@ -14,6 +14,7 @@ const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const { Parser } = require('json2csv');
 require('dotenv').config();
+
 // ============ RENDER ENVIRONMENT DETECTION ============
 const isRender = process.env.RENDER === 'true' || 
                  process.env.RENDER_SERVICE_ID || 
@@ -58,7 +59,7 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 5000,
 });
 
 let dbConnected = false;
@@ -131,112 +132,260 @@ async function logEmailSent(userId, email, to, subject, status, error = null) {
     }
 }
 
-// ============ HEALTH CHECK ============
-app.get('/api/health', async (req, res) => {
-    consoleLog('INFO', 'Health check requested');
+// ============ HELPER FUNCTIONS ============
+function safeTimestamp(value) {
+    if (!value || value === '' || value === 'null' || value === 'undefined' || value === 'Invalid Date') {
+        return null;
+    }
     try {
-        await pool.query('SELECT 1');
-        res.json({ 
-            status: 'healthy', 
-            database: 'connected',
-            email: transporter ? 'configured' : 'disabled',
-            uptime: process.uptime(),
-            timestamp: new Date().toISOString()
-        });
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? null : date.toISOString();
     } catch (err) {
-        consoleLog('ERROR', 'Health check failed:', err.message);
-        res.status(500).json({ 
-            status: 'unhealthy', 
-            database: 'disconnected',
-            error: err.message
-        });
+        return null;
     }
-});
-// ============ TEST EMAIL ENDPOINT (For Debugging) ============
-app.get('/api/test-email', async (req, res) => {
-    consoleLog('INFO', '📧 Test email endpoint called');
+}
+
+function formatTimestampForResponse(timestamp) {
+    if (!timestamp) return null;
+    try {
+        return new Date(timestamp).toISOString();
+    } catch (err) {
+        return null;
+    }
+}
+
+async function generateUsername(email) {
+    let base = email.split('@')[0].replace(/[^a-zA-Z]/g, '').toUpperCase();
+    if (base.length < 3) base = base + 'USER';
+    let attempt = 0;
+    while (true) {
+        let username = base + (attempt > 0 ? attempt : '');
+        const result = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
+        if (result.rows.length === 0) return username;
+        attempt++;
+    }
+}
+
+function checkPasswordStrength(password) {
+    let score = 0;
+    if (!password) return { score: 0, strength: 'No Password', color: '#6c757d', width: '0%' };
+    if (password.length >= 8) score++;
+    if (password.length >= 12) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+    let strength = score <= 2 ? 'Weak' : score <= 4 ? 'Medium' : 'Strong';
+    let color = score <= 2 ? '#dc3545' : score <= 4 ? '#ffc107' : '#28a745';
+    return { score, strength, color, width: `${(score / 5) * 100}%` };
+}
+
+// ============ PDF/EXCEL/CSV GENERATION FUNCTIONS ============
+async function generatePDF(tasks, userEmail) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const buffers = [];
+        doc.on('data', buffers.push.bind(buffers));
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
+        doc.on('error', reject);
+        
+        doc.rect(0, 0, doc.page.width, 100).fill('#667eea');
+        doc.fillColor('#fff').fontSize(28).font('Helvetica-Bold').text('TaskWeaver', 50, 35);
+        doc.fontSize(14).font('Helvetica').text('Schedule Report', 50, 70);
+        doc.fillColor('#2d3748').fontSize(12).text(`Generated for: ${userEmail}`, 50, 120);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 50, 140);
+        
+        let y = 180;
+        tasks.forEach(task => {
+            if (y > doc.page.height - 150) { doc.addPage(); y = 50; }
+            let color = task.severity === 'Critical' ? '#f56565' : task.severity === 'High' ? '#ed8936' : '#48bb78';
+            doc.rect(50, y - 10, doc.page.width - 100, 100).fill('#f7fafc');
+            doc.rect(50, y - 10, 5, 100).fill(color);
+            doc.fillColor('#2d3748').fontSize(14).font('Helvetica-Bold').text(task.title, 65, y);
+            doc.fontSize(10).font('Helvetica').fillColor('#4a5568');
+            let details = [];
+            if (task.description) details.push(`📝 ${task.description.substring(0, 100)}`);
+            if (task.project) details.push(`📁 Project: ${task.project}`);
+            if (task.scheduled_start) details.push(`⏰ ${new Date(task.scheduled_start).toLocaleString()}`);
+            if (task.deadline) details.push(`⚠️ Deadline: ${new Date(task.deadline).toLocaleString()}`);
+            doc.text(details.join(' • '), 65, y + 20);
+            y += 110;
+        });
+        doc.end();
+    });
+}
+
+async function generateExcel(tasks) {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'TaskWeaver';
+    const worksheet = workbook.addWorksheet('Schedule Report');
+    worksheet.columns = [
+        { header: 'Task Title', key: 'title', width: 30 },
+        { header: 'Description', key: 'description', width: 40 },
+        { header: 'Project', key: 'project', width: 20 },
+        { header: 'Category', key: 'category', width: 15 },
+        { header: 'Severity', key: 'severity', width: 12 },
+        { header: 'Priority', key: 'priority', width: 10 },
+        { header: 'Scheduled Start', key: 'scheduled_start', width: 20 },
+        { header: 'Deadline', key: 'deadline', width: 20 },
+        { header: 'Completed', key: 'completed', width: 12 },
+        { header: 'Tags', key: 'tags', width: 20 }
+    ];
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF667EEA' } };
+    tasks.forEach(task => {
+        worksheet.addRow({
+            title: task.title,
+            description: task.description || '',
+            project: task.project || '',
+            category: task.category || '',
+            severity: task.severity || 'Medium',
+            priority: task.priority || 2,
+            scheduled_start: task.scheduled_start ? new Date(task.scheduled_start).toLocaleString() : '',
+            deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
+            completed: task.completed ? 'Yes' : 'No',
+            tags: task.tags || ''
+        });
+    });
+    return await workbook.xlsx.writeBuffer();
+}
+
+function generateCSV(tasks) {
+    const fields = ['title', 'description', 'project', 'category', 'severity', 'priority', 'scheduled_start', 'deadline', 'completed', 'tags'];
+    const parser = new Parser({ fields });
+    const formattedTasks = tasks.map(task => ({
+        ...task,
+        scheduled_start: task.scheduled_start ? new Date(task.scheduled_start).toLocaleString() : '',
+        deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
+        completed: task.completed ? 'Yes' : 'No'
+    }));
+    return parser.parse(formattedTasks);
+}
+
+function getEmailTemplate(title, content, buttonText = null, buttonLink = null) {
+    return `<!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"><title>TaskWeaver</title>
+    <style>
+        body{font-family:'Segoe UI',Arial,sans-serif;background:#f7fafc;margin:0;padding:20px}
+        .container{max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1)}
+        .header{background:linear-gradient(135deg,#667eea,#764ba2);padding:30px;text-align:center}
+        .header h1{color:#fff;margin:0;font-size:28px}
+        .header p{color:rgba(255,255,255,0.9);margin:10px 0 0}
+        .content{padding:40px}
+        .title{font-size:24px;font-weight:bold;color:#2d3748;margin-bottom:20px;border-left:4px solid #667eea;padding-left:15px}
+        .message{color:#4a5568;line-height:1.6}
+        .info-box{background:#f7fafc;border-left:4px solid #667eea;padding:15px;margin:20px 0;border-radius:8px}
+        .button{display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:12px 30px;text-decoration:none;border-radius:8px;margin:20px 0;font-weight:600}
+        .footer{background:#f7fafc;padding:20px;text-align:center;font-size:12px;color:#718096}
+        hr{border:none;border-top:1px solid #e2e8f0;margin:20px 0}
+    </style>
+    </head>
+    <body>
+    <div class="container">
+        <div class="header"><h1>⚡ TaskWeaver</h1><p>Your Intelligent Task Management Solution</p></div>
+        <div class="content">
+            <div class="title">${title}</div>
+            <div class="message">${content}</div>
+            ${buttonText && buttonLink ? `<div style="text-align:center"><a href="${buttonLink}" class="button">${buttonText}</a></div>` : ''}
+        </div>
+        <div class="footer"><p>© 2025 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
+    </div>
+    </body>
+    </html>`;
+}
+
+// ============ EMAIL TRANSPORTER ============
+let transporter = null;
+
+function setupEmailTransporter() {
+    consoleLog('INFO', 'Configuring email transporter...');
     
-    if (!transporter) {
-        return res.json({ 
-            success: false, 
-            error: 'Email not configured',
-            render: isRender,
-            port: port,
-            message: 'Email service is not configured. Check your EMAIL_USER and EMAIL_PASS'
-        });
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        consoleLog('WARNING', 'Email credentials not configured. Email notifications will be disabled.');
+        consoleLog('INFO', 'To enable email, set EMAIL_USER and EMAIL_PASS in environment variables');
+        return;
     }
+    
+    if (process.env.EMAIL_USER === 'your-email@gmail.com') {
+        consoleLog('WARNING', 'Using placeholder email. Please update EMAIL_USER in environment variables');
+        return;
+    }
+    
+    const emailPass = process.env.EMAIL_PASS.replace(/\s/g, '');
+    const emailUser = process.env.EMAIL_USER.trim();
     
     try {
-        const testEmail = process.env.EMAIL_USER;
-        const result = await sendEmail(
-            testEmail,
-            'TaskWeaver Email Test - Render',
-            `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background: linear-gradient(135deg, #667eea, #764ba2); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0; }
-                    .content { padding: 20px; background: #f9f9f9; border-radius: 0 0 10px 10px; }
-                    .status { color: #28a745; font-weight: bold; }
-                    .info { background: #e9ecef; padding: 10px; border-radius: 5px; margin: 10px 0; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>⚡ TaskWeaver</h1>
-                        <p>Email Test Successful!</p>
-                    </div>
-                    <div class="content">
-                        <h2>✅ Your email configuration is working!</h2>
-                        <p>This email was sent from <strong>TaskWeaver</strong> running on <strong>Render</strong>.</p>
-                        <div class="info">
-                            <strong>Test Details:</strong><br>
-                            Environment: ${isRender ? 'Render (Production)' : 'Local (Development)'}<br>
-                            Server Port: ${port}<br>
-                            Email User: ${process.env.EMAIL_USER}<br>
-                            Timestamp: ${new Date().toLocaleString()}
-                        </div>
-                        <p>Your TaskWeaver email notifications are now active!</p>
-                        <hr>
-                        <small>TaskWeaver - Weaving Productivity into Your Life</small>
-                    </div>
-                </div>
-            </body>
-            </html>
-            `
-        );
+        const smtpConfig = isRender ? {
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: { user: emailUser, pass: emailPass },
+            tls: { rejectUnauthorized: false },
+            connectionTimeout: 30000,
+            greetingTimeout: 30000,
+            socketTimeout: 30000,
+            debug: false
+        } : {
+            service: 'gmail',
+            auth: { user: emailUser, pass: emailPass },
+            debug: false
+        };
         
-        if (result.success) {
-            res.json({ 
-                success: true, 
-                message: 'Test email sent successfully! Check your inbox.',
-                details: {
-                    environment: isRender ? 'Render' : 'Local',
-                    port: port,
-                    emailTo: testEmail,
-                    messageId: result.messageId
+        transporter = nodemailer.createTransport(smtpConfig);
+        
+        transporter.verify((error, success) => {
+            if (error) {
+                consoleLog('ERROR', '✗ Email server connection FAILED:', error.message);
+                transporter = null;
+            } else {
+                consoleLog('SUCCESS', '✓ Email server CONNECTED and READY');
+                consoleLog('SUCCESS', `  └─ Using email: ${emailUser}`);
+                if (isRender) {
+                    consoleLog('SUCCESS', `  └─ Render mode: SMTP on port ${smtpConfig.port}`);
                 }
-            });
-        } else {
-            res.json({ 
-                success: false, 
-                error: result.error,
-                message: 'Failed to send test email'
-            });
-        }
-    } catch (error) {
-        consoleLog('ERROR', 'Test email failed:', error.message);
-        res.json({ 
-            success: false, 
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            }
         });
+    } catch (error) {
+        consoleLog('ERROR', 'Failed to setup email transporter:', error.message);
+        transporter = null;
     }
-});
+}
+
+function sendEmail(to, subject, html) {
+    if (!transporter) {
+        consoleLog('WARNING', `Email not sent to ${to}: Email service not configured`);
+        return Promise.reject(new Error('Email service not configured'));
+    }
+    
+    consoleLog('INFO', `Sending email to ${to}: ${subject}`);
+    
+    const mailOptions = {
+        from: `"TaskWeaver" <${process.env.EMAIL_USER}>`,
+        to: to,
+        subject: subject,
+        html: html,
+        headers: {
+            'X-Priority': '3',
+            'X-Mailer': 'TaskWeaver'
+        }
+    };
+    
+    return transporter.sendMail(mailOptions)
+        .then(info => {
+            consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject} (Message ID: ${info.messageId})`);
+            return info;
+        })
+        .catch(error => {
+            consoleLog('ERROR', `✗ Failed to send email to ${to}:`, error.message);
+            if (error.code === 'EAUTH') {
+                consoleLog('ERROR', '  └─ Authentication failed. Use App Password for Gmail');
+            } else if (error.code === 'ECONNECTION') {
+                consoleLog('ERROR', '  └─ Connection failed. Check network/firewall');
+            }
+            throw error;
+        });
+}
+
 // ============ CORS CONFIGURATION ============
 const allowedOrigins = [
     'http://localhost:3000',
@@ -292,7 +441,7 @@ app.use(session({
         tableName: 'session',
         createTableIfMissing: true,
     }),
-    secret: process.env.SESSION_SECRET || 'taskweaver_secret_key_2024',
+    secret: process.env.SESSION_SECRET || 'taskweaver_secret_key_2024_secure_32_chars',
     resave: false,
     saveUninitialized: false,
     cookie: { 
@@ -305,7 +454,6 @@ app.use(session({
     rolling: true
 }));
 
-// Session debug middleware
 app.use((req, res, next) => {
     if (req.session && req.session.userId) {
         res.locals.userId = req.session.userId;
@@ -350,7 +498,7 @@ async function initializeDatabase() {
         `);
         consoleLog('SUCCESS', 'Users table ready');
         
-        // Tasks table
+        // Tasks table with safe defaults
         await client.query(`
             CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
@@ -362,22 +510,22 @@ async function initializeDatabase() {
                 category TEXT,
                 severity TEXT DEFAULT 'Medium',
                 priority INTEGER DEFAULT 2,
-                deadline TIMESTAMP,
+                deadline TIMESTAMP DEFAULT NULL,
                 is_recurring INTEGER DEFAULT 0,
                 recurrence_pattern TEXT,
-                recurrence_end_date TIMESTAMP,
-                scheduled_start TIMESTAMP,
-                scheduled_end TIMESTAMP,
-                actual_start TIMESTAMP,
-                actual_end TIMESTAMP,
+                recurrence_end_date TIMESTAMP DEFAULT NULL,
+                scheduled_start TIMESTAMP DEFAULT NULL,
+                scheduled_end TIMESTAMP DEFAULT NULL,
+                actual_start TIMESTAMP DEFAULT NULL,
+                actual_end TIMESTAMP DEFAULT NULL,
                 completed INTEGER DEFAULT 0,
-                completed_at TIMESTAMP,
+                completed_at TIMESTAMP DEFAULT NULL,
                 completion_notes TEXT,
                 email_reminder_sent INTEGER DEFAULT 0,
                 deadline_reminder_sent INTEGER DEFAULT 0,
                 overdue_reminder_sent INTEGER DEFAULT 0,
                 reminder_count INTEGER DEFAULT 0,
-                last_reminder_sent TIMESTAMP,
+                last_reminder_sent TIMESTAMP DEFAULT NULL,
                 estimated_duration INTEGER,
                 actual_duration INTEGER,
                 tags TEXT,
@@ -386,7 +534,7 @@ async function initializeDatabase() {
                 dependencies TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                deleted_at TIMESTAMP
+                deleted_at TIMESTAMP DEFAULT NULL
             )
         `);
         consoleLog('SUCCESS', 'Tasks table ready');
@@ -413,7 +561,7 @@ async function initializeDatabase() {
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 user_email TEXT NOT NULL,
                 task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                reminder_time TIMESTAMP NOT NULL,
+                reminder_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 reminder_type TEXT DEFAULT 'scheduled',
                 reminder_method TEXT DEFAULT 'email',
                 sent INTEGER DEFAULT 0,
@@ -424,34 +572,6 @@ async function initializeDatabase() {
             )
         `);
         consoleLog('SUCCESS', 'Reminders table ready');
-        
-        // ============ DATABASE TRIGGER - ADDED HERE ============
-        // Create trigger to prevent invalid reminder timestamps
-        try {
-            await client.query(`
-                CREATE OR REPLACE FUNCTION validate_reminder_time()
-                RETURNS TRIGGER AS $$
-                BEGIN
-                    IF NEW.reminder_time IS NULL OR NEW.reminder_time = '' OR NEW.reminder_time::text = 'null' THEN
-                        NEW.reminder_time = NOW();
-                    END IF;
-                    RETURN NEW;
-                END;
-                $$ LANGUAGE plpgsql;
-            `);
-            
-            await client.query(`
-                DROP TRIGGER IF EXISTS ensure_valid_reminder_time ON reminders;
-                CREATE TRIGGER ensure_valid_reminder_time
-                    BEFORE INSERT OR UPDATE ON reminders
-                    FOR EACH ROW
-                    EXECUTE FUNCTION validate_reminder_time();
-            `);
-            consoleLog('SUCCESS', 'Reminder time validation trigger created');
-        } catch (err) {
-            consoleLog('WARNING', 'Could not create reminder trigger:', err.message);
-        }
-        // ============ END OF DATABASE TRIGGER ============
         
         // Activity log table
         await client.query(`
@@ -525,6 +645,64 @@ async function initializeDatabase() {
         `);
         consoleLog('SUCCESS', 'Projects table ready');
         
+        // Create timestamp validation triggers
+        await client.query(`
+            CREATE OR REPLACE FUNCTION validate_task_timestamps()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF NEW.deadline IS NULL OR NEW.deadline = '' OR NEW.deadline::text = 'null' THEN
+                    NEW.deadline = NULL;
+                END IF;
+                IF NEW.scheduled_start IS NULL OR NEW.scheduled_start = '' OR NEW.scheduled_start::text = 'null' THEN
+                    NEW.scheduled_start = NULL;
+                END IF;
+                IF NEW.scheduled_end IS NULL OR NEW.scheduled_end = '' OR NEW.scheduled_end::text = 'null' THEN
+                    NEW.scheduled_end = NULL;
+                END IF;
+                IF NEW.completed_at IS NULL OR NEW.completed_at = '' OR NEW.completed_at::text = 'null' THEN
+                    NEW.completed_at = NULL;
+                END IF;
+                IF NEW.last_reminder_sent IS NULL OR NEW.last_reminder_sent = '' OR NEW.last_reminder_sent::text = 'null' THEN
+                    NEW.last_reminder_sent = NULL;
+                END IF;
+                IF NEW.recurrence_end_date IS NULL OR NEW.recurrence_end_date = '' OR NEW.recurrence_end_date::text = 'null' THEN
+                    NEW.recurrence_end_date = NULL;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        await client.query(`
+            DROP TRIGGER IF EXISTS validate_task_timestamps_trigger ON tasks;
+            CREATE TRIGGER validate_task_timestamps_trigger
+                BEFORE INSERT OR UPDATE ON tasks
+                FOR EACH ROW
+                EXECUTE FUNCTION validate_task_timestamps();
+        `);
+        
+        await client.query(`
+            CREATE OR REPLACE FUNCTION validate_reminder_time()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF NEW.reminder_time IS NULL OR NEW.reminder_time = '' OR NEW.reminder_time::text = 'null' THEN
+                    NEW.reminder_time = NOW();
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        await client.query(`
+            DROP TRIGGER IF EXISTS ensure_valid_reminder_time ON reminders;
+            CREATE TRIGGER ensure_valid_reminder_time
+                BEFORE INSERT OR UPDATE ON reminders
+                FOR EACH ROW
+                EXECUTE FUNCTION validate_reminder_time();
+        `);
+        
+        consoleLog('SUCCESS', 'Timestamp validation triggers created');
+        
         // Create indexes
         const indexes = [
             'CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)',
@@ -536,7 +714,6 @@ async function initializeDatabase() {
             'CREATE INDEX IF NOT EXISTS idx_reminders_sent ON reminders(sent)',
             'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
             'CREATE INDEX IF NOT EXISTS idx_activity_user_id ON activity_log(user_id)',
-            'CREATE INDEX IF NOT EXISTS idx_activity_email ON activity_log(email)',
             'CREATE INDEX IF NOT EXISTS idx_email_log_recipient ON email_log(recipient)',
             'CREATE INDEX IF NOT EXISTS idx_suggestions_user_id ON suggestions(user_id)',
             'CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)',
@@ -549,6 +726,16 @@ async function initializeDatabase() {
         }
         consoleLog('SUCCESS', 'All indexes created');
         
+        // Fix any existing tasks with empty timestamps
+        await client.query(`
+            UPDATE tasks SET 
+                deadline = NULL WHERE deadline IS NULL OR deadline = '' OR deadline::text = 'null',
+                scheduled_start = NULL WHERE scheduled_start IS NULL OR scheduled_start = '' OR scheduled_start::text = 'null',
+                scheduled_end = NULL WHERE scheduled_end IS NULL OR scheduled_end = '' OR scheduled_end::text = 'null',
+                completed_at = NULL WHERE completed_at IS NULL OR completed_at = '' OR completed_at::text = 'null',
+                last_reminder_sent = NULL WHERE last_reminder_sent IS NULL OR last_reminder_sent = '' OR last_reminder_sent::text = 'null'
+        `);
+        
         // Create demo user
         const demoEmail = 'demo@taskweaver.com';
         const existingDemo = await client.query('SELECT id FROM users WHERE email = $1', [demoEmail]);
@@ -556,8 +743,8 @@ async function initializeDatabase() {
         if (existingDemo.rows.length === 0) {
             const hashedPassword = await bcrypt.hash('Demo@2024', 10);
             await client.query(
-                `INSERT INTO users (username, email, password, email_notifications, push_notifications, timezone, theme, email_verified) 
-                 VALUES ($1, $2, $3, 1, 1, 'UTC', 'light', 1)`,
+                `INSERT INTO users (username, email, password, email_notifications, push_notifications, timezone, theme, email_verified, created_at) 
+                 VALUES ($1, $2, $3, 1, 1, 'UTC', 'light', 1, NOW())`,
                 ['DEMOUSER', demoEmail, hashedPassword]
             );
             consoleLog('SUCCESS', 'Demo user created: demo@taskweaver.com / Demo@2024');
@@ -575,451 +762,75 @@ async function initializeDatabase() {
     }
 }
 
-// ============ TABLE STRUCTURE VERIFICATION ============
-async function verifyAndFixTableStructure() {
-    const client = await pool.connect();
+// ============ HEALTH CHECK ============
+app.get('/api/health', async (req, res) => {
+    consoleLog('INFO', 'Health check requested');
     try {
-        consoleLog('INFO', 'Verifying database table structures...');
-        
-        // Check and fix tasks table columns
-        const tasksColumns = await client.query(`
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'tasks'
-        `);
-        
-        const existingTaskColumns = tasksColumns.rows.map(c => c.column_name);
-        
-        // Define all required columns for tasks table
-        const requiredTaskColumns = [
-            { name: 'id', type: 'SERIAL PRIMARY KEY' },
-            { name: 'user_id', type: 'INTEGER NOT NULL' },
-            { name: 'user_email', type: 'TEXT NOT NULL', default: "''" },
-            { name: 'title', type: 'TEXT NOT NULL' },
-            { name: 'description', type: 'TEXT', default: 'NULL' },
-            { name: 'project', type: 'TEXT', default: 'NULL' },
-            { name: 'category', type: 'TEXT', default: 'NULL' },
-            { name: 'severity', type: 'TEXT DEFAULT \'Medium\'' },
-            { name: 'priority', type: 'INTEGER DEFAULT 2' },
-            { name: 'deadline', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'is_recurring', type: 'INTEGER DEFAULT 0' },
-            { name: 'recurrence_pattern', type: 'TEXT', default: 'NULL' },
-            { name: 'recurrence_end_date', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'scheduled_start', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'scheduled_end', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'actual_start', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'actual_end', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'completed', type: 'INTEGER DEFAULT 0' },
-            { name: 'completed_at', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'completion_notes', type: 'TEXT', default: 'NULL' },
-            { name: 'email_reminder_sent', type: 'INTEGER DEFAULT 0' },
-            { name: 'deadline_reminder_sent', type: 'INTEGER DEFAULT 0' },
-            { name: 'overdue_reminder_sent', type: 'INTEGER DEFAULT 0' },
-            { name: 'reminder_count', type: 'INTEGER DEFAULT 0' },
-            { name: 'last_reminder_sent', type: 'TIMESTAMP', default: 'NULL' },
-            { name: 'estimated_duration', type: 'INTEGER', default: 'NULL' },
-            { name: 'actual_duration', type: 'INTEGER', default: 'NULL' },
-            { name: 'tags', type: 'TEXT', default: 'NULL' },
-            { name: 'attachments', type: 'TEXT', default: 'NULL' },
-            { name: 'subtasks', type: 'TEXT', default: 'NULL' },
-            { name: 'dependencies', type: 'TEXT', default: 'NULL' },
-            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
-            { name: 'updated_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
-            { name: 'deleted_at', type: 'TIMESTAMP', default: 'NULL' }
-        ];
-        
-        // Add missing columns to tasks table
-        for (const col of requiredTaskColumns) {
-            if (!existingTaskColumns.includes(col.name)) {
-                consoleLog('INFO', `Adding missing column to tasks: ${col.name}`);
-                try {
-                    await client.query(`
-                        ALTER TABLE tasks 
-                        ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}
-                    `);
-                } catch (err) {
-                    consoleLog('WARNING', `Could not add column ${col.name}:`, err.message);
-                }
-            }
-        }
-        
-        // Ensure tasks table has foreign key constraint
-        await client.query(`
-            DO $$ 
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.table_constraints 
-                    WHERE constraint_name = 'tasks_user_id_fkey' 
-                    AND table_name = 'tasks'
-                ) THEN
-                    ALTER TABLE tasks ADD CONSTRAINT tasks_user_id_fkey 
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-                END IF;
-            END $$;
-        `);
-        
-        consoleLog('SUCCESS', 'Table structures verified and fixed');
-        
-        // Fix any tasks with missing user_email
-        const fixResult = await client.query(`
-            UPDATE tasks 
-            SET user_email = COALESCE(
-                (SELECT email FROM users WHERE users.id = tasks.user_id),
-                ''
-            )
-            WHERE user_email IS NULL OR user_email = ''
-        `);
-        
-        if (fixResult.rowCount > 0) {
-            consoleLog('INFO', `Fixed ${fixResult.rowCount} tasks with missing user_email`);
-        }
-        
+        await pool.query('SELECT 1');
+        res.json({ 
+            status: 'healthy', 
+            database: 'connected',
+            email: transporter ? 'configured' : 'disabled',
+            uptime: process.uptime(),
+            timestamp: new Date().toISOString()
+        });
     } catch (err) {
-        consoleLog('ERROR', 'Error verifying table structure:', err.message);
-    } finally {
-        client.release();
-    }
-}
-// ============ CLEANUP INVALID REMINDERS ============
-async function cleanupInvalidReminders() {
-    try {
-        // First, verify table structures
-        await verifyAndFixTableStructure();
-        
-        // Fix invalid reminder timestamps
-        await pool.query(`
-            UPDATE reminders 
-            SET reminder_time = NOW() 
-            WHERE reminder_time IS NULL 
-               OR reminder_time = '' 
-               OR reminder_time::text = 'null'
-               OR reminder_time::text = ''
-        `);
-        
-        // Fix tasks with missing user_email
-        const fixResult = await pool.query(`
-            UPDATE tasks 
-            SET user_email = COALESCE(
-                (SELECT email FROM users WHERE users.id = tasks.user_id),
-                ''
-            )
-            WHERE user_email IS NULL OR user_email = ''
-        `);
-        
-        if (fixResult.rowCount > 0) {
-            consoleLog('INFO', `Fixed ${fixResult.rowCount} tasks with missing user_email`);
-        }
-        
-        consoleLog('SUCCESS', 'Database cleanup completed');
-        
-    } catch (err) {
-        consoleLog('WARNING', 'Could not clean up invalid reminders:', err.message);
-    }
-}
-// ============ EMAIL TRANSPORTER ============
-let transporter = null;
-
-function setupEmailTransporter() {
-    consoleLog('INFO', 'Configuring email transporter...');
-    
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        consoleLog('WARNING', 'Email credentials not configured. Email notifications will be disabled.');
-        consoleLog('INFO', 'To enable email, set EMAIL_USER and EMAIL_PASS in environment variables');
-        return;
-    }
-    
-    if (process.env.EMAIL_USER === 'your-email@gmail.com') {
-        consoleLog('WARNING', 'Using placeholder email. Please update EMAIL_USER in environment variables');
-        return;
-    }
-    
-    // Remove spaces from App Password (critical for Render)
-    const emailPass = process.env.EMAIL_PASS.replace(/\s/g, '');
-    const emailUser = process.env.EMAIL_USER;
-    
-    // Detect if running on Render
-    const isRender = process.env.RENDER === 'true' || 
-                     process.env.RENDER_SERVICE_ID || 
-                     process.env.RENDER_INSTANCE_ID ||
-                     process.env.DATABASE_URL?.includes('render.com');
-    
-    try {
-        // Use explicit SMTP settings for better Render compatibility
-        const smtpConfig = isRender ? {
-            host: 'smtp.gmail.com',
-            port: 465,  // Use 465 for Render (port 587 often blocked)
-            secure: true,
-            auth: { 
-                user: emailUser, 
-                pass: emailPass 
-            },
-            tls: {
-                rejectUnauthorized: false,
-                ciphers: 'SSLv3'
-            },
-            connectionTimeout: 30000,
-            greetingTimeout: 30000,
-            socketTimeout: 30000,
-            debug: false
-        } : {
-            service: 'gmail',
-            auth: { 
-                user: emailUser, 
-                pass: emailPass 
-            },
-            debug: false
-        };
-        
-        transporter = nodemailer.createTransport(smtpConfig);
-        
-        // Verify connection and show status
-        transporter.verify((error, success) => {
-            if (error) {
-                consoleLog('ERROR', '✗ Email server connection FAILED:', error.message);
-                if (isRender) {
-                    consoleLog('INFO', '  └─ Render detected - trying alternative configuration...');
-                    setupAlternativeForRender();
-                } else {
-                    consoleLog('ERROR', '  └─ Check your EMAIL_USER and EMAIL_PASS in .env file');
-                    consoleLog('INFO', '  └─ For Gmail, use an App Password (not your regular password)');
-                    transporter = null;
-                }
-            } else {
-                consoleLog('SUCCESS', '✓ Email server CONNECTED and READY');
-                consoleLog('SUCCESS', `  └─ Using email: ${emailUser}`);
-                consoleLog('SUCCESS', `  └─ Service: Gmail (SMTP)`);
-                if (isRender) {
-                    consoleLog('SUCCESS', `  └─ Render mode: Port ${smtpConfig.port}`);
-                }
-            }
+        consoleLog('ERROR', 'Health check failed:', err.message);
+        res.status(500).json({ 
+            status: 'unhealthy', 
+            database: 'disconnected',
+            error: err.message
         });
-    } catch (error) {
-        consoleLog('ERROR', 'Failed to setup email transporter:', error.message);
-        if (isRender) {
-            setupAlternativeForRender();
-        } else {
-            transporter = null;
-        }
     }
-}
+});
 
-function setupAlternativeForRender() {
-    try {
-        const emailPass = process.env.EMAIL_PASS.replace(/\s/g, '');
-        const emailUser = process.env.EMAIL_USER;
-        
-        // Alternative configuration using service mode for Render
-        transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: emailUser,
-                pass: emailPass
-            },
-            tls: {
-                rejectUnauthorized: false
-            },
-            connectionTimeout: 30000,
-            socketTimeout: 30000
-        });
-        
-        transporter.verify((error) => {
-            if (error) {
-                consoleLog('ERROR', '✗ Alternative config also failed:', error.message);
-                consoleLog('WARNING', '⚠️ Email notifications will be disabled on Render');
-                consoleLog('INFO', '  └─ Consider using SendGrid as an alternative');
-                transporter = null;
-            } else {
-                consoleLog('SUCCESS', '✓ Email connected with alternative configuration');
-                consoleLog('SUCCESS', `  └─ Using email: ${emailUser}`);
-            }
-        });
-    } catch (error) {
-        consoleLog('ERROR', 'Failed to setup alternative email:', error.message);
-        transporter = null;
-    }
-}
-
-function sendEmail(to, subject, html) {
+// ============ TEST EMAIL ENDPOINT ============
+app.get('/api/test-email', async (req, res) => {
+    consoleLog('INFO', '📧 Test email endpoint called');
+    
     if (!transporter) {
-        consoleLog('WARNING', `Email not sent to ${to}: Email service not configured`);
-        return Promise.reject(new Error('Email service not configured'));
+        return res.json({ 
+            success: false, 
+            error: 'Email not configured',
+            message: 'Email service is not configured. Check your EMAIL_USER and EMAIL_PASS'
+        });
     }
     
-    consoleLog('INFO', `Sending email to ${to}: ${subject}`);
-    
-    const mailOptions = {
-        from: `"TaskWeaver" <${process.env.EMAIL_USER}>`,
-        to: to,
-        subject: subject,
-        html: html,
-        headers: {
-            'X-Priority': '3',
-            'X-Mailer': 'TaskWeaver'
-        }
-    };
-    
-    return transporter.sendMail(mailOptions)
-        .then(info => {
-            consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject} (Message ID: ${info.messageId})`);
-            return info;
-        })
-        .catch(error => {
-            consoleLog('ERROR', `✗ Failed to send email to ${to}:`, error.message);
-            if (error.code === 'EAUTH') {
-                consoleLog('ERROR', '  └─ Authentication failed. Use App Password for Gmail');
-            } else if (error.code === 'ECONNECTION') {
-                consoleLog('ERROR', '  └─ Connection failed. Check network/firewall');
+    try {
+        const testEmail = process.env.EMAIL_USER;
+        const result = await sendEmail(
+            testEmail,
+            'TaskWeaver Email Test',
+            getEmailTemplate(
+                'Email Test Successful! 🎉',
+                `Your TaskWeaver email configuration is working perfectly!<br><br>
+                <div class="info-box">
+                    <strong>Test Details:</strong><br>
+                    Environment: ${isRender ? 'Render (Production)' : 'Local (Development)'}<br>
+                    Server Port: ${port}<br>
+                    Email User: ${process.env.EMAIL_USER}<br>
+                    Timestamp: ${new Date().toLocaleString()}
+                </div>`
+            )
+        );
+        
+        res.json({ 
+            success: true, 
+            message: 'Test email sent successfully! Check your inbox.',
+            details: {
+                environment: isRender ? 'Render' : 'Local',
+                port: port,
+                emailTo: testEmail
             }
-            throw error;
         });
-}
-
-function getEmailTemplate(title, content, buttonText = null, buttonLink = null) {
-    return `<!DOCTYPE html>
-    <html>
-    <head><meta charset="UTF-8"><title>TaskWeaver</title>
-    <style>
-        body{font-family:'Segoe UI',Arial,sans-serif;background:#f7fafc;margin:0;padding:20px}
-        .container{max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1)}
-        .header{background:linear-gradient(135deg,#667eea,#764ba2);padding:30px;text-align:center}
-        .header h1{color:#fff;margin:0;font-size:28px}
-        .header p{color:rgba(255,255,255,0.9);margin:10px 0 0}
-        .content{padding:40px}
-        .title{font-size:24px;font-weight:bold;color:#2d3748;margin-bottom:20px;border-left:4px solid #667eea;padding-left:15px}
-        .message{color:#4a5568;line-height:1.6}
-        .info-box{background:#f7fafc;border-left:4px solid #667eea;padding:15px;margin:20px 0;border-radius:8px}
-        .button{display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:12px 30px;text-decoration:none;border-radius:8px;margin:20px 0;font-weight:600}
-        .footer{background:#f7fafc;padding:20px;text-align:center;font-size:12px;color:#718096}
-        hr{border:none;border-top:1px solid #e2e8f0;margin:20px 0}
-    </style>
-    </head>
-    <body>
-    <div class="container">
-        <div class="header"><h1>⚡ TaskWeaver</h1><p>Your Intelligent Task Management Solution</p></div>
-        <div class="content">
-            <div class="title">${title}</div>
-            <div class="message">${content}</div>
-            ${buttonText && buttonLink ? `<div style="text-align:center"><a href="${buttonLink}" class="button">${buttonText}</a></div>` : ''}
-        </div>
-        <div class="footer"><p>© 2024 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
-    </div>
-    </body>
-    </html>`;
-}
-
-// ============ EXPORT FUNCTIONS ============
-async function generatePDF(tasks, userEmail) {
-    return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ margin: 50, size: 'A4' });
-        const buffers = [];
-        doc.on('data', buffers.push.bind(buffers));
-        doc.on('end', () => resolve(Buffer.concat(buffers)));
-        doc.on('error', reject);
-        
-        doc.rect(0, 0, doc.page.width, 100).fill('#667eea');
-        doc.fillColor('#fff').fontSize(28).font('Helvetica-Bold').text('TaskWeaver', 50, 35);
-        doc.fontSize(14).font('Helvetica').text('Schedule Report', 50, 70);
-        doc.fillColor('#2d3748').fontSize(12).text(`Generated for: ${userEmail}`, 50, 120);
-        doc.text(`Generated on: ${new Date().toLocaleString()}`, 50, 140);
-        
-        let y = 180;
-        tasks.forEach(task => {
-            if (y > doc.page.height - 150) { doc.addPage(); y = 50; }
-            let color = task.severity === 'Critical' ? '#f56565' : task.severity === 'High' ? '#ed8936' : '#48bb78';
-            doc.rect(50, y - 10, doc.page.width - 100, 100).fill('#f7fafc');
-            doc.rect(50, y - 10, 5, 100).fill(color);
-            doc.fillColor('#2d3748').fontSize(14).font('Helvetica-Bold').text(task.title, 65, y);
-            doc.fontSize(10).font('Helvetica').fillColor('#4a5568');
-            let details = [];
-            if (task.description) details.push(`📝 ${task.description.substring(0, 100)}`);
-            if (task.project) details.push(`📁 Project: ${task.project}`);
-            if (task.scheduled_start) details.push(`⏰ ${new Date(task.scheduled_start).toLocaleString()}`);
-            if (task.deadline) details.push(`⏰ Deadline: ${new Date(task.deadline).toLocaleString()}`);
-            doc.text(details.join(' • '), 65, y + 20);
-            y += 110;
+    } catch (error) {
+        consoleLog('ERROR', 'Test email failed:', error.message);
+        res.json({ 
+            success: false, 
+            error: error.message
         });
-        doc.end();
-    });
-}
-
-async function generateExcel(tasks) {
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'TaskWeaver';
-    const worksheet = workbook.addWorksheet('Schedule Report');
-    worksheet.columns = [
-        { header: 'Task Title', key: 'title', width: 30 },
-        { header: 'Description', key: 'description', width: 40 },
-        { header: 'Project', key: 'project', width: 20 },
-        { header: 'Category', key: 'category', width: 15 },
-        { header: 'Severity', key: 'severity', width: 12 },
-        { header: 'Scheduled Start', key: 'scheduled_start', width: 20 },
-        { header: 'Deadline', key: 'deadline', width: 20 },
-        { header: 'Completed', key: 'completed', width: 12 },
-        { header: 'Tags', key: 'tags', width: 20 }
-    ];
-    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF667EEA' } };
-    tasks.forEach(task => {
-        worksheet.addRow({
-            title: task.title,
-            description: task.description || '',
-            project: task.project || '',
-            category: task.category || '',
-            severity: task.severity || 'Medium',
-            scheduled_start: task.scheduled_start ? new Date(task.scheduled_start).toLocaleString() : '',
-            deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
-            completed: task.completed ? 'Yes' : 'No',
-            tags: task.tags || ''
-        });
-    });
-    return await workbook.xlsx.writeBuffer();
-}
-
-function generateCSV(tasks) {
-    const fields = ['title', 'description', 'project', 'category', 'severity', 'scheduled_start', 'deadline', 'completed', 'tags'];
-    const parser = new Parser({ fields });
-    const formattedTasks = tasks.map(task => ({
-        ...task,
-        scheduled_start: task.scheduled_start ? new Date(task.scheduled_start).toLocaleString() : '',
-        deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
-        completed: task.completed ? 'Yes' : 'No'
-    }));
-    return parser.parse(formattedTasks);
-}
-
-// ============ HELPER FUNCTIONS ============
-async function generateUsername(email) {
-    let base = email.split('@')[0].replace(/[^a-zA-Z]/g, '').toUpperCase();
-    if (base.length < 3) base = base + 'USER';
-    let attempt = 0;
-    while (true) {
-        let username = base + (attempt > 0 ? attempt : '');
-        const result = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-        if (result.rows.length === 0) return username;
-        attempt++;
     }
-}
-
-function checkPasswordStrength(password) {
-    let score = 0;
-    if (!password) return { score: 0, strength: 'No Password', color: '#6c757d', width: '0%' };
-    if (password.length >= 8) score++;
-    if (password.length >= 12) score++;
-    if (/[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
-    let strength = score <= 2 ? 'Weak' : score <= 4 ? 'Medium' : 'Strong';
-    let color = score <= 2 ? '#dc3545' : score <= 4 ? '#ffc107' : '#28a745';
-    return { score, strength, color, width: `${(score / 5) * 100}%` };
-}
-
-function requireAuth(req, res, next) {
-    if (!req.session?.userId) {
-        consoleLog('WARNING', `Unauthorized access attempt from ${req.ip}`);
-        return res.status(401).json({ error: 'Authentication required' });
-    }
-    next();
-}
+});
 
 // ============ AUTHENTICATION ROUTES ============
 app.post('/api/check-password-strength', (req, res) => {
@@ -1038,20 +849,17 @@ app.post('/api/register', async (req, res) => {
     consoleLog('INFO', `Registration attempt for email: ${email}`);
     
     if (!email || !password) {
-        consoleLog('WARNING', `Registration failed: Missing email or password`);
         return res.status(400).json({ error: 'Email and password required' });
     }
     
     const strength = checkPasswordStrength(password);
     if (strength.score < 3) {
-        consoleLog('WARNING', `Registration failed: Weak password for ${email}`);
         return res.status(400).json({ error: 'Password too weak. Use 8+ chars with uppercase, numbers, and special characters.' });
     }
     
     try {
         const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
         if (existing.rows.length > 0) {
-            consoleLog('WARNING', `Registration failed: Email already registered - ${email}`);
             return res.status(400).json({ error: 'Email already registered' });
         }
         
@@ -1060,8 +868,8 @@ app.post('/api/register', async (req, res) => {
         const verificationToken = crypto.randomBytes(32).toString('hex');
         
         const result = await pool.query(
-            `INSERT INTO users (username, email, password, last_login_ip, last_login_user_agent, verification_token) 
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            `INSERT INTO users (username, email, password, last_login_ip, last_login_user_agent, verification_token, created_at, updated_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING id`,
             [username, email, hashedPassword, req.ip, req.headers['user-agent'], verificationToken]
         );
         
@@ -1090,6 +898,7 @@ app.post('/api/register', async (req, res) => {
         
         await logUserActivity(userId, email, 'REGISTER', 'User registered successfully', req);
         res.json({ success: true, username, email, message: 'Registration successful! Please check your email to verify your account.' });
+        
     } catch (err) {
         consoleLog('ERROR', `Registration error for ${email}:`, err.message);
         res.status(500).json({ error: 'Registration failed' });
@@ -1284,34 +1093,27 @@ app.post('/api/reset-password', async (req, res) => {
     }
 });
 
+function requireAuth(req, res, next) {
+    if (!req.session?.userId) {
+        consoleLog('WARNING', `Unauthorized access attempt from ${req.ip}`);
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    next();
+}
+
 // ============ DEBUG ENDPOINTS ============
 
-// Check raw tasks data without any filtering
+// Check raw tasks data
 app.get('/api/debug-tasks', requireAuth, async (req, res) => {
     try {
-        consoleLog('INFO', `Debug tasks for user: ${req.session.email} (ID: ${req.session.userId})`);
+        consoleLog('INFO', `Debug tasks for user: ${req.session.email}`);
         
-        // Get ALL tasks for this user ID
         const tasksByUserId = await pool.query(`
-            SELECT id, title, user_id, user_email, created_at, deleted_at, completed
+            SELECT id, title, user_id, user_email, created_at, deleted_at, completed, scheduled_start, deadline
             FROM tasks 
             WHERE user_id = $1
             ORDER BY id DESC
             LIMIT 20
-        `, [req.session.userId]);
-        
-        // Also check tasks by email in case of mismatch
-        const tasksByEmail = await pool.query(`
-            SELECT id, title, user_id, user_email, created_at, deleted_at, completed
-            FROM tasks 
-            WHERE user_email = $1
-            ORDER BY id DESC
-            LIMIT 20
-        `, [req.session.email]);
-        
-        // Get total count
-        const totalCount = await pool.query(`
-            SELECT COUNT(*) as total FROM tasks WHERE user_id = $1
         `, [req.session.userId]);
         
         res.json({
@@ -1320,18 +1122,8 @@ app.get('/api/debug-tasks', requireAuth, async (req, res) => {
                 email: req.session.email,
                 username: req.session.username
             },
-            tasksByUserId: {
-                count: tasksByUserId.rows.length,
-                tasks: tasksByUserId.rows
-            },
-            tasksByEmail: {
-                count: tasksByEmail.rows.length,
-                tasks: tasksByEmail.rows
-            },
-            totalTasksForUser: parseInt(totalCount.rows[0].total),
-            message: tasksByUserId.rows.length === 0 && tasksByEmail.rows.length === 0 
-                ? 'No tasks found for this user in the database' 
-                : `Found ${tasksByUserId.rows.length} tasks by user_id and ${tasksByEmail.rows.length} tasks by email`
+            tasks: tasksByUserId.rows,
+            count: tasksByUserId.rows.length
         });
         
     } catch (error) {
@@ -1340,7 +1132,7 @@ app.get('/api/debug-tasks', requireAuth, async (req, res) => {
     }
 });
 
-// Check database tables structure
+// Check database schema
 app.get('/api/debug-schema', async (req, res) => {
     try {
         const tables = await pool.query(`
@@ -1367,7 +1159,7 @@ app.get('/api/debug-schema', async (req, res) => {
     }
 });
 
-// Create a test task directly
+// Create test task
 app.post('/api/create-test-task', requireAuth, async (req, res) => {
     try {
         const testTitle = `Test Task ${new Date().toLocaleTimeString()}`;
@@ -1390,6 +1182,7 @@ app.post('/api/create-test-task', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 // ============ USER SETTINGS ============
 app.get('/api/settings', requireAuth, async (req, res) => {
     consoleLog('INFO', `Loading settings for user: ${req.session.email}`);
@@ -1421,7 +1214,7 @@ app.put('/api/settings', requireAuth, async (req, res) => {
         await pool.query(
             `UPDATE users SET reminder_interval = COALESCE($1, reminder_interval), auto_reminders = COALESCE($2, auto_reminders),
              email_notifications = COALESCE($3, email_notifications), push_notifications = COALESCE($4, push_notifications),
-             timezone = COALESCE($5, timezone), theme = COALESCE($6, theme)
+             timezone = COALESCE($5, timezone), theme = COALESCE($6, theme), updated_at = NOW()
              WHERE id = $7`,
             [reminder_interval, auto_reminders ? 1 : 0, email_notifications ? 1 : 0, push_notifications ? 1 : 0, timezone, theme, req.session.userId]
         );
@@ -1438,49 +1231,41 @@ app.put('/api/settings', requireAuth, async (req, res) => {
 app.get('/api/tasks', requireAuth, async (req, res) => {
     consoleLog('INFO', `Loading tasks for user: ${req.session.email}`);
     try {
-        // Simple query that should work with basic table structure
         const result = await pool.query(`
             SELECT 
-                id, 
-                user_id, 
-                user_email, 
-                title, 
-                description, 
-                project, 
-                category, 
-                severity, 
-                priority, 
-                deadline, 
-                scheduled_start, 
-                scheduled_end, 
-                completed, 
-                completed_at, 
-                tags, 
-                is_recurring,
-                recurrence_pattern,
-                created_at,
-                updated_at,
-                deleted_at
+                id, user_id, user_email, title, description, project, category, 
+                severity, priority, deadline, scheduled_start, scheduled_end, 
+                completed, completed_at, tags, is_recurring, recurrence_pattern,
+                created_at, updated_at
             FROM tasks 
             WHERE user_id = $1 
-            AND (deleted_at IS NULL OR deleted_at = '')
+            AND (deleted_at IS NULL)
             ORDER BY 
-                CASE 
-                    WHEN severity = 'Critical' THEN 1
-                    WHEN severity = 'High' THEN 2
-                    WHEN severity = 'Medium' THEN 3
-                    WHEN severity = 'Low' THEN 4
-                    ELSE 5
+                CASE severity 
+                    WHEN 'Critical' THEN 1 
+                    WHEN 'High' THEN 2 
+                    WHEN 'Medium' THEN 3 
+                    WHEN 'Low' THEN 4 
+                    ELSE 5 
                 END,
                 deadline ASC NULLS LAST, 
                 scheduled_start ASC NULLS LAST
         `, [req.session.userId]);
         
-        consoleLog('SUCCESS', `Loaded ${result.rows.length} tasks for ${req.session.email}`);
-        res.json(result.rows || []);
+        const formattedTasks = result.rows.map(task => ({
+            ...task,
+            deadline: formatTimestampForResponse(task.deadline),
+            scheduled_start: formatTimestampForResponse(task.scheduled_start),
+            scheduled_end: formatTimestampForResponse(task.scheduled_end),
+            completed_at: formatTimestampForResponse(task.completed_at),
+            created_at: formatTimestampForResponse(task.created_at),
+            updated_at: formatTimestampForResponse(task.updated_at)
+        }));
+        
+        consoleLog('SUCCESS', `Loaded ${formattedTasks.length} tasks for ${req.session.email}`);
+        res.json(formattedTasks);
     } catch (err) {
         consoleLog('ERROR', `Failed to load tasks:`, err.message);
-        // Return empty array on error so UI doesn't break
         res.json([]);
     }
 });
@@ -1489,13 +1274,13 @@ app.get('/api/unscheduled-tasks', requireAuth, async (req, res) => {
     consoleLog('INFO', `Loading unscheduled tasks for user: ${req.session.email}`);
     try {
         const result = await pool.query(
-            `SELECT * FROM tasks WHERE user_id = $1 AND (scheduled_start IS NULL OR scheduled_start = '') 
-             AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '')
+            `SELECT * FROM tasks WHERE user_id = $1 AND (scheduled_start IS NULL) 
+             AND completed = 0 AND deleted_at IS NULL
              ORDER BY CASE severity WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 END,
              deadline ASC NULLS LAST`,
             [req.session.userId]
         );
-        res.json(result.rows || []);
+        res.json(result.rows);
     } catch (err) {
         consoleLog('ERROR', `Failed to load unscheduled tasks:`, err.message);
         res.status(500).json({ error: err.message });
@@ -1510,7 +1295,7 @@ app.get('/api/upcoming-deadlines', requireAuth, async (req, res) => {
              AND deadline >= NOW() ORDER BY deadline ASC LIMIT 10`,
             [req.session.userId]
         );
-        res.json(result.rows || []);
+        res.json(result.rows);
     } catch (err) {
         consoleLog('ERROR', `Failed to load upcoming deadlines:`, err.message);
         res.status(500).json({ error: err.message });
@@ -1525,7 +1310,7 @@ app.get('/api/overdue-tasks', requireAuth, async (req, res) => {
              AND deadline < NOW() ORDER BY deadline ASC`,
             [req.session.userId]
         );
-        res.json(result.rows || []);
+        res.json(result.rows);
     } catch (err) {
         consoleLog('ERROR', `Failed to load overdue tasks:`, err.message);
         res.status(500).json({ error: err.message });
@@ -1542,59 +1327,37 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     }
     
     try {
-        // First, ensure the tasks table exists with all required columns
-        await verifyAndFixTableStructure();
+        const safeDeadline = safeTimestamp(deadline);
+        const safeScheduledStart = safeTimestamp(scheduled_start);
+        const safeScheduledEnd = safeTimestamp(scheduled_end);
         
         const result = await pool.query(`
             INSERT INTO tasks (
-                user_id, 
-                user_email, 
-                title, 
-                description, 
-                project, 
-                category, 
-                severity, 
-                priority, 
-                deadline, 
-                is_recurring, 
-                recurrence_pattern, 
-                scheduled_start, 
-                scheduled_end, 
-                estimated_duration, 
-                tags,
-                created_at,
-                updated_at
+                user_id, user_email, title, description, project, category, 
+                severity, priority, deadline, is_recurring, recurrence_pattern, 
+                scheduled_start, scheduled_end, estimated_duration, tags,
+                created_at, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
             RETURNING id
         `, [
-            req.session.userId, 
-            req.session.email, 
-            title, 
-            description || null, 
-            project || null, 
-            category || null, 
-            severity || 'Medium', 
-            priority || 2, 
-            deadline || null, 
-            is_recurring ? 1 : 0, 
-            recurrence_pattern || null, 
-            scheduled_start || null, 
-            scheduled_end || null, 
-            estimated_duration || null, 
-            tags || null
+            req.session.userId, req.session.email, title, description || null, 
+            project || null, category || null, severity || 'Medium', priority || 2,
+            safeDeadline, is_recurring ? 1 : 0, recurrence_pattern || null,
+            safeScheduledStart, safeScheduledEnd, estimated_duration || null, tags || null
         ]);
         
         const taskId = result.rows[0].id;
         
         // Create reminder if scheduled
-        if (scheduled_start) {
+        if (safeScheduledStart) {
             try {
-                const reminderTime = new Date(new Date(scheduled_start).getTime() - 20 * 60 * 1000);
+                const reminderTime = new Date(new Date(safeScheduledStart).getTime() - 20 * 60 * 1000);
                 await pool.query(`
-                    INSERT INTO reminders (user_id, user_email, task_id, reminder_time, reminder_type) 
-                    VALUES ($1, $2, $3, $4, 'scheduled')
+                    INSERT INTO reminders (user_id, user_email, task_id, reminder_time, reminder_type, created_at) 
+                    VALUES ($1, $2, $3, $4, 'scheduled', NOW())
                 `, [req.session.userId, req.session.email, taskId, reminderTime.toISOString()]);
+                consoleLog('INFO', `Reminder created for task ${taskId} at ${reminderTime}`);
             } catch (reminderErr) {
                 consoleLog('WARNING', 'Could not create reminder:', reminderErr.message);
             }
@@ -1615,6 +1378,7 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
     consoleLog('INFO', `Updating task ${taskId} for user: ${req.session.email}`);
     
     const { title, description, project, category, severity, priority, deadline, scheduled_start, scheduled_end, completed, actual_start, actual_end, completion_notes, tags } = req.body;
+    
     const updates = [];
     const values = [];
     let paramCounter = 1;
@@ -1625,19 +1389,20 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
     if (category !== undefined) { updates.push(`category = $${paramCounter++}`); values.push(category); }
     if (severity !== undefined) { updates.push(`severity = $${paramCounter++}`); values.push(severity); }
     if (priority !== undefined) { updates.push(`priority = $${paramCounter++}`); values.push(priority); }
-    if (deadline !== undefined) { updates.push(`deadline = $${paramCounter++}`); values.push(deadline); }
-    if (scheduled_start !== undefined) { updates.push(`scheduled_start = $${paramCounter++}`); values.push(scheduled_start); }
-    if (scheduled_end !== undefined) { updates.push(`scheduled_end = $${paramCounter++}`); values.push(scheduled_end); }
-    if (actual_start !== undefined) { updates.push(`actual_start = $${paramCounter++}`); values.push(actual_start); }
-    if (actual_end !== undefined) { updates.push(`actual_end = $${paramCounter++}`); values.push(actual_end); }
-    if (completion_notes !== undefined) { updates.push(`completion_notes = $${paramCounter++}`); values.push(completion_notes); }
     if (tags !== undefined) { updates.push(`tags = $${paramCounter++}`); values.push(tags); }
+    if (deadline !== undefined) { updates.push(`deadline = $${paramCounter++}`); values.push(safeTimestamp(deadline)); }
+    if (scheduled_start !== undefined) { updates.push(`scheduled_start = $${paramCounter++}`); values.push(safeTimestamp(scheduled_start)); }
+    if (scheduled_end !== undefined) { updates.push(`scheduled_end = $${paramCounter++}`); values.push(safeTimestamp(scheduled_end)); }
+    if (actual_start !== undefined) { updates.push(`actual_start = $${paramCounter++}`); values.push(safeTimestamp(actual_start)); }
+    if (actual_end !== undefined) { updates.push(`actual_end = $${paramCounter++}`); values.push(safeTimestamp(actual_end)); }
+    if (completion_notes !== undefined) { updates.push(`completion_notes = $${paramCounter++}`); values.push(completion_notes); }
+    
     if (completed !== undefined) { 
         updates.push(`completed = $${paramCounter++}`); 
         values.push(completed ? 1 : 0);
-        if (completed) updates.push(`completed_at = CURRENT_TIMESTAMP`);
+        if (completed) updates.push(`completed_at = NOW()`);
         else updates.push(`completed_at = NULL`);
-        updates.push(`updated_at = CURRENT_TIMESTAMP`);
+        updates.push(`updated_at = NOW()`);
     }
     
     if (updates.length === 0) return res.status(400).json({ error: 'No updates provided' });
@@ -1662,12 +1427,11 @@ app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
     
     try {
         const taskResult = await pool.query('SELECT title FROM tasks WHERE id = $1 AND user_id = $2', [taskId, req.session.userId]);
-        const task = taskResult.rows[0];
         const result = await pool.query('DELETE FROM tasks WHERE id = $1 AND user_id = $2', [taskId, req.session.userId]);
         
-        if (task) {
-            consoleLog('SUCCESS', `Task deleted: ${task.title} (ID: ${taskId}) for ${req.session.email}`);
-            await logUserActivity(req.session.userId, req.session.email, 'TASK_DELETED', `Task: ${task.title}`, req);
+        if (taskResult.rows[0]) {
+            consoleLog('SUCCESS', `Task deleted: ${taskResult.rows[0].title} (ID: ${taskId})`);
+            await logUserActivity(req.session.userId, req.session.email, 'TASK_DELETED', `Task: ${taskResult.rows[0].title}`, req);
         }
         res.json({ deleted: result.rowCount });
     } catch (err) {
@@ -1704,9 +1468,9 @@ app.post('/api/projects', requireAuth, async (req, res) => {
     
     try {
         const result = await pool.query(
-            `INSERT INTO projects (user_id, user_email, name, description, color, status, progress, start_date, end_date)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-            [req.session.userId, req.session.email, name, description, color, status || 'active', progress || 0, start_date, end_date]
+            `INSERT INTO projects (user_id, user_email, name, description, color, status, progress, start_date, end_date, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING id`,
+            [req.session.userId, req.session.email, name, description, color, status || 'active', progress || 0, safeTimestamp(start_date), safeTimestamp(end_date)]
         );
         consoleLog('SUCCESS', `Project created: ${name} for ${req.session.email}`);
         await logUserActivity(req.session.userId, req.session.email, 'PROJECT_CREATED', `Project: ${name}`, req);
@@ -1727,7 +1491,7 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
             `UPDATE projects SET name = COALESCE($1, name), description = COALESCE($2, description), color = COALESCE($3, color),
              status = COALESCE($4, status), progress = COALESCE($5, progress), start_date = COALESCE($6, start_date),
              end_date = COALESCE($7, end_date), updated_at = NOW() WHERE id = $8 AND user_id = $9`,
-            [name, description, color, status, progress, start_date, end_date, projectId, req.session.userId]
+            [name, description, color, status, progress, safeTimestamp(start_date), safeTimestamp(end_date), projectId, req.session.userId]
         );
         consoleLog('SUCCESS', `Project ${projectId} updated for ${req.session.email}`);
         await logUserActivity(req.session.userId, req.session.email, 'PROJECT_UPDATED', `Project ID: ${projectId}`, req);
@@ -1764,7 +1528,7 @@ app.get('/api/suggestions', requireAuth, async (req, res) => {
         
         if (suggestions.rows.length === 0) {
             const tasks = await pool.query(
-                `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND (scheduled_start IS NULL OR scheduled_start = '') 
+                `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND scheduled_start IS NULL 
                  ORDER BY CASE severity WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 END, 
                  deadline ASC LIMIT 5`,
                 [req.session.userId]
@@ -1782,6 +1546,8 @@ app.get('/api/suggestions', requireAuth, async (req, res) => {
             if (suggestionTexts.length === 0) {
                 suggestionTexts.push("✨ Great job! All tasks are scheduled. Consider planning some personal development time.");
                 suggestionTexts.push("💡 Tip: Use the Focus Timer for 25-minute productivity sprints.");
+                suggestionTexts.push("📊 Check your statistics to see your productivity trends!");
+                suggestionTexts.push("🔔 Don't forget to configure your email notification settings.");
             }
             res.json(suggestionTexts.slice(0, 5));
         } else {
@@ -1817,22 +1583,19 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         
         await pool.query(
-            `INSERT INTO shared_schedules (user_id, user_email, share_with_email, share_token, share_type, expires_at)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
+            `INSERT INTO shared_schedules (user_id, user_email, share_with_email, share_token, share_type, expires_at, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
             [userId, userEmail, shareWithEmail, shareToken, shareType, expiresAt.toISOString()]
         );
         
         const tasksResult = await pool.query(
-            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '') 
+            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND deleted_at IS NULL 
              ORDER BY scheduled_start ASC, deadline ASC`,
             [userId]
         );
         const tasks = tasksResult.rows;
         
         const shareLink = `https://${req.get('host')}/api/view-shared-schedule?token=${shareToken}`;
-        const pdfBuffer = await generatePDF(tasks, userEmail);
-        const excelBuffer = await generateExcel(tasks);
-        const csvData = generateCSV(tasks);
         
         const emailContent = getEmailTemplate(
             `${userEmail} has shared their schedule with you! 📅`,
@@ -1845,21 +1608,15 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
                 Share Type: ${shareType}<br>
                 Expires: ${expiresAt.toLocaleString()}<br>
             </div>
-            You can view the schedule online using the link below, or check the attached files.`,
+            You can view the schedule online using the link below.`,
             'View Schedule Online',
             shareLink
         );
         
         if (transporter) {
             sendEmail(shareWithEmail, `📅 Schedule Shared with You - TaskWeaver`, emailContent)
-                .then(() => {
-                    logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'success');
-                    consoleLog('SUCCESS', `Schedule shared from ${userEmail} to ${shareWithEmail}`);
-                })
-                .catch(err => {
-                    logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'failed', err);
-                    consoleLog('ERROR', `Failed to send share email:`, err.message);
-                });
+                .then(() => logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'success'))
+                .catch(err => logEmailSent(userId, userEmail, shareWithEmail, 'Schedule Shared', 'failed', err));
         }
         
         res.json({ success: true, message: `Schedule shared with ${shareWithEmail}` });
@@ -1886,7 +1643,7 @@ app.get('/api/view-shared-schedule', async (req, res) => {
         }
         
         const tasksResult = await pool.query(
-            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '') 
+            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND deleted_at IS NULL 
              ORDER BY scheduled_start ASC, deadline ASC`,
             [share.user_id]
         );
@@ -1930,7 +1687,7 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
     
     try {
         const result = await pool.query(
-            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND (deleted_at IS NULL OR deleted_at = '') 
+            `SELECT * FROM tasks WHERE user_id = $1 AND completed = 0 AND deleted_at IS NULL 
              ORDER BY scheduled_start ASC, deadline ASC`,
             [userId]
         );
@@ -1971,19 +1728,17 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
 app.get('/api/user-stats', requireAuth, async (req, res) => {
     consoleLog('INFO', `Loading stats for user: ${req.session.email}`);
     try {
-        // Simple stats query that won't fail
         const result = await pool.query(`
             SELECT 
                 COUNT(CASE WHEN completed = 1 THEN 1 END) as completed_tasks,
                 COUNT(CASE WHEN completed = 0 AND scheduled_start IS NOT NULL THEN 1 END) as scheduled_tasks,
-                COUNT(CASE WHEN completed = 0 AND (scheduled_start IS NULL OR scheduled_start = '') THEN 1 END) as unscheduled_tasks,
+                COUNT(CASE WHEN completed = 0 AND scheduled_start IS NULL THEN 1 END) as unscheduled_tasks,
                 COUNT(CASE WHEN severity = 'Critical' AND completed = 0 THEN 1 END) as critical_tasks,
                 COUNT(CASE WHEN severity = 'High' AND completed = 0 THEN 1 END) as high_priority_tasks,
                 COUNT(CASE WHEN deadline < CURRENT_TIMESTAMP AND completed = 0 THEN 1 END) as overdue_tasks,
                 COUNT(CASE WHEN created_at > NOW() - INTERVAL '7 days' THEN 1 END) as tasks_this_week
             FROM tasks 
-            WHERE user_id = $1
-            AND (deleted_at IS NULL OR deleted_at = '')
+            WHERE user_id = $1 AND deleted_at IS NULL
         `, [req.session.userId]);
         
         const stats = result.rows[0] || {
@@ -1999,7 +1754,6 @@ app.get('/api/user-stats', requireAuth, async (req, res) => {
         res.json(stats);
     } catch (err) {
         consoleLog('ERROR', `Failed to load stats:`, err.message);
-        // Return default stats on error
         res.json({
             completed_tasks: 0,
             scheduled_tasks: 0,
@@ -2045,32 +1799,25 @@ app.get('/api/debug', async (req, res) => {
         });
     } catch (error) {
         consoleLog('ERROR', 'Debug endpoint error:', error.message);
-        res.status(500).json({ error: error.message, databaseConnected: false });
+        res.status(500).json({ error: error.message });
     }
 });
 
 // ============ REMINDER SYSTEM ============
 async function checkScheduledReminders() {
-    if (!dbConnected || !transporter) {
-        if (!transporter) consoleLog('WARNING', 'Reminder check skipped: Email not configured');
-        return;
-    }
+    if (!dbConnected || !transporter) return;
     
     try {
-        // Safety check - only get reminders with valid timestamps
         const result = await pool.query(`
             SELECT r.*, t.title, t.description, t.user_id, t.user_email, u.email_notifications
             FROM reminders r
             JOIN tasks t ON r.task_id = t.id
             JOIN users u ON r.user_id = u.id
             WHERE r.reminder_time <= NOW()
-            AND r.reminder_time IS NOT NULL
-            AND r.reminder_time != ''
-            AND r.reminder_time::text != 'null'
             AND r.sent = 0
             AND u.email_notifications = 1
             AND t.completed = 0
-            AND (t.deleted_at IS NULL OR t.deleted_at = '')
+            AND t.deleted_at IS NULL
         `);
         
         const reminders = result.rows;
@@ -2079,15 +1826,6 @@ async function checkScheduledReminders() {
         }
         
         for (const reminder of reminders) {
-            // Additional safety check for each reminder
-            if (!reminder.reminder_time) {
-                consoleLog('WARNING', `Skipping reminder ${reminder.id}: invalid timestamp`);
-                // Mark as sent to avoid repeated errors
-                await pool.query('UPDATE reminders SET sent = 1, last_error = $1 WHERE id = $2', 
-                    ['Invalid timestamp skipped', reminder.id]);
-                continue;
-            }
-            
             const emailContent = getEmailTemplate(
                 `Reminder: ${reminder.title}`,
                 `<div class="info-box">
@@ -2129,7 +1867,6 @@ async function checkDeadlineReminders() {
             JOIN users u ON t.user_id = u.id
             WHERE t.completed = 0 
             AND t.deadline IS NOT NULL
-            AND t.deadline != ''
             AND t.deadline_reminder_sent = 0
             AND u.email_notifications = 1
             AND EXTRACT(EPOCH FROM (t.deadline - NOW())) / 3600 <= 24
@@ -2137,8 +1874,6 @@ async function checkDeadlineReminders() {
         `);
         
         for (const task of result.rows) {
-            if (!task.deadline) continue;
-            
             const deadline = new Date(task.deadline);
             const hoursLeft = Math.ceil((deadline - new Date()) / (1000 * 3600));
             const emailContent = getEmailTemplate(
@@ -2181,15 +1916,12 @@ async function checkOverdueTasks() {
             JOIN users u ON t.user_id = u.id
             WHERE t.completed = 0 
             AND t.deadline IS NOT NULL
-            AND t.deadline != ''
             AND t.deadline < NOW()
             AND t.overdue_reminder_sent = 0
             AND u.email_notifications = 1
         `);
         
         for (const task of result.rows) {
-            if (!task.deadline) continue;
-            
             const deadline = new Date(task.deadline);
             const daysOverdue = Math.floor((new Date() - deadline) / (1000 * 3600 * 24));
             const emailContent = getEmailTemplate(
@@ -2222,22 +1954,14 @@ async function checkOverdueTasks() {
     }
 }
 
-// Schedule reminders with error handling
+// Schedule reminders
 cron.schedule('* * * * *', () => { 
-    try {
-        checkScheduledReminders();
-    } catch (err) {
-        consoleLog('ERROR', 'Scheduled reminder cron error:', err.message);
-    }
+    checkScheduledReminders().catch(err => consoleLog('ERROR', 'Scheduled reminder cron error:', err.message));
 });
 
 cron.schedule('*/30 * * * *', () => { 
-    try {
-        checkDeadlineReminders(); 
-        checkOverdueTasks();
-    } catch (err) {
-        consoleLog('ERROR', 'Deadline reminder cron error:', err.message);
-    }
+    checkDeadlineReminders().catch(err => consoleLog('ERROR', 'Deadline reminder cron error:', err.message));
+    checkOverdueTasks().catch(err => consoleLog('ERROR', 'Overdue tasks cron error:', err.message));
 });
 
 // ============ ERROR HANDLING ============
@@ -2257,19 +1981,9 @@ async function startServer() {
     try {
         consoleLog('INFO', 'Starting TaskWeaver server...');
         
-        // Initialize database (creates tables if they don't exist)
         await initializeDatabase();
-        
-        // Verify and fix table structures (adds missing columns)
-        await verifyAndFixTableStructure();
-        
-        // Clean up any invalid data
-        await cleanupInvalidReminders();
-        
-        // Setup email transporter
         setupEmailTransporter();
         
-        // Start the server
         app.listen(port, '0.0.0.0', () => {
             consoleLog('SUCCESS', `\n╔══════════════════════════════════════════════════════════════╗`);
             consoleLog('SUCCESS', `║                    🚀 TASKWEAVER SERVER 🚀                      ║`);
@@ -2282,11 +1996,14 @@ async function startServer() {
             }
             consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
             consoleLog('SUCCESS', `║  Features Active:                                            ║`);
-            consoleLog('SUCCESS', `║    ✓ Task Management                                         ║`);
+            consoleLog('SUCCESS', `║    ✓ Task Management (CRUD)                                   ║`);
             consoleLog('SUCCESS', `║    ✓ Project Management                                      ║`);
             consoleLog('SUCCESS', `║    ✓ Reminder System (every minute)                          ║`);
             consoleLog('SUCCESS', `║    ✓ Schedule Sharing (PDF/Excel/CSV)                        ║`);
             consoleLog('SUCCESS', `║    ✓ Email Notifications ${transporter ? '✓ ENABLED'.padEnd(41) : '✗ DISABLED'.padEnd(41)}║`);
+            consoleLog('SUCCESS', `║    ✓ Activity Logging                                        ║`);
+            consoleLog('SUCCESS', `║    ✓ Password Strength Checker                               ║`);
+            consoleLog('SUCCESS', `║    ✓ Session Management                                      ║`);
             consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
             consoleLog('SUCCESS', `║  Demo Login:                                                 ║`);
             consoleLog('SUCCESS', `║    📧 demo@taskweaver.com                                    ║`);
@@ -2294,10 +2011,10 @@ async function startServer() {
             consoleLog('SUCCESS', `╠══════════════════════════════════════════════════════════════╣`);
             consoleLog('SUCCESS', `║  Health: http://localhost:${port}/api/health${' '.repeat(47 - port.toString().length)}║`);
             consoleLog('SUCCESS', `║  Debug:  http://localhost:${port}/api/debug${' '.repeat(48 - port.toString().length)}║`);
+            consoleLog('SUCCESS', `║  Test Email: http://localhost:${port}/api/test-email${' '.repeat(44 - port.toString().length)}║`);
             consoleLog('SUCCESS', `╚══════════════════════════════════════════════════════════════╝\n`);
         });
         
-        // Graceful shutdown handlers
         process.on('SIGTERM', () => { 
             consoleLog('INFO', 'SIGTERM received, shutting down gracefully...');
             pool.end(() => {
@@ -2314,22 +2031,11 @@ async function startServer() {
             });
         });
         
-        // Handle uncaught exceptions
-        process.on('uncaughtException', (error) => {
-            consoleLog('ERROR', 'Uncaught Exception:', error.message);
-            consoleLog('ERROR', error.stack);
-            // Don't exit immediately, let the app continue
-        });
-        
-        process.on('unhandledRejection', (reason, promise) => {
-            consoleLog('ERROR', 'Unhandled Rejection at:', promise);
-            consoleLog('ERROR', 'Reason:', reason);
-        });
-        
     } catch (error) {
         consoleLog('ERROR', 'Failed to start server:', error.message);
         consoleLog('ERROR', error.stack);
         process.exit(1);
     }
 }
+
 startServer();
