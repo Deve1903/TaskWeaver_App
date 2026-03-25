@@ -1,4 +1,5 @@
 const express = require('express');
+const sgMail = require('@sendgrid/mail');
 const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -295,146 +296,202 @@ function getEmailTemplate(title, content, buttonText = null, buttonLink = null) 
 }
 
 // ============ EMAIL TRANSPORTER ============
+let emailConfigured = false;
 let transporter = null;
 
 function setupEmailTransporter() {
-    consoleLog('INFO', 'Configuring email transporter for Render...');
+    consoleLog('INFO', 'Configuring SendGrid for Render...');
     
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        consoleLog('WARNING', 'Email credentials not configured');
+    // Check for SendGrid API Key
+    if (!process.env.SENDGRID_API_KEY) {
+        consoleLog('ERROR', 'SendGrid API key not found in environment variables');
+        consoleLog('INFO', 'Please add SENDGRID_API_KEY to Render environment variables');
+        consoleLog('INFO', 'Get your API key from: https://app.sendgrid.com/settings/api_keys');
         return;
     }
     
-    const emailPass = process.env.EMAIL_PASS;
-    const emailUser = process.env.EMAIL_USER.trim();
-    
-    consoleLog('INFO', `Using email: ${emailUser}`);
-    
-    try {
-        // Critical: Use these exact settings for Render
-        const smtpConfig = {
-            host: 'smtp.gmail.com',
-            port: 465,  // Use 465 (SSL) instead of 587 (TLS)
-            secure: true,  // SSL
-            auth: {
-                user: emailUser,
-                pass: emailPass
-            },
-            tls: {
-                rejectUnauthorized: false,
-                ciphers: 'SSLv3'
-            },
-            connectionTimeout: 60000,  // Increased timeout
-            greetingTimeout: 60000,
-            socketTimeout: 60000,
-            debug: false
-        };
-        
-        transporter = nodemailer.createTransport(smtpConfig);
-        
-        // Verify connection with timeout
-        const verifyTimeout = setTimeout(() => {
-            consoleLog('WARNING', 'Email verification taking longer than expected...');
-        }, 5000);
-        
-        transporter.verify((error, success) => {
-            clearTimeout(verifyTimeout);
-            
-            if (error) {
-                consoleLog('ERROR', 'Email connection failed:', error.message);
-                consoleLog('ERROR', `Error code: ${error.code}`);
-                
-                // Try alternative port if 465 fails
-                if (error.code === 'ECONNECTION') {
-                    consoleLog('INFO', 'Trying alternative SMTP configuration...');
-                    tryAlternativeConfig();
-                }
-            } else {
-                consoleLog('SUCCESS', '✓ Email server CONNECTED and READY');
-                consoleLog('SUCCESS', `  └─ Using: ${emailUser}`);
-                consoleLog('SUCCESS', `  └─ SMTP: smtp.gmail.com:465 (SSL)`);
-            }
-        });
-        
-    } catch (error) {
-        consoleLog('ERROR', 'Email setup error:', error.message);
-        transporter = null;
+    // Check for sender email
+    if (!process.env.EMAIL_USER) {
+        consoleLog('ERROR', 'EMAIL_USER not set. This is needed as the sender email');
+        consoleLog('INFO', 'Please add EMAIL_USER to Render environment variables');
+        return;
     }
-}
-
-function tryAlternativeConfig() {
+    
     try {
-        const altConfig = {
-            host: 'smtp.gmail.com',
-            port: 587,
-            secure: false,
-            auth: {
-                user: process.env.EMAIL_USER.trim(),
-                pass: process.env.EMAIL_PASS
+        // Initialize SendGrid with API key
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+        
+        const senderEmail = process.env.EMAIL_USER.trim();
+        consoleLog('INFO', `Sender email: ${senderEmail}`);
+        consoleLog('INFO', `API Key: ${process.env.SENDGRID_API_KEY.substring(0, 10)}...`);
+        
+        // Test SendGrid configuration by sending a test email
+        const testMsg = {
+            to: senderEmail,
+            from: {
+                email: senderEmail,
+                name: 'TaskWeaver'
             },
-            tls: {
-                rejectUnauthorized: false
-            },
-            connectionTimeout: 60000
+            subject: '✅ TaskWeaver Email Test - SendGrid Working!',
+            text: 'SendGrid is working on Render! Your TaskWeaver email system is ready.',
+            html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; background: #f7fafc; padding: 20px; }
+                        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; }
+                        .header { background: linear-gradient(135deg, #667eea, #764ba2); padding: 30px; text-align: center; }
+                        .header h1 { color: white; margin: 0; }
+                        .content { padding: 40px; }
+                        .success { color: #28a745; font-weight: bold; }
+                        .info-box { background: #f7fafc; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>⚡ TaskWeaver</h1>
+                        </div>
+                        <div class="content">
+                            <h2>✅ SendGrid Test Successful!</h2>
+                            <div class="info-box">
+                                <p><strong>Your TaskWeaver email system is now working on Render!</strong></p>
+                                <p>You will now receive:</p>
+                                <ul>
+                                    <li>📧 Welcome emails for new users</li>
+                                    <li>🔔 Task reminders</li>
+                                    <li>⚠️ Deadline alerts</li>
+                                    <li>📅 Shared schedule notifications</li>
+                                    <li>🔐 Password reset emails</li>
+                                </ul>
+                            </div>
+                            <p>Time: ${new Date().toLocaleString()}</p>
+                            <hr>
+                            <small>TaskWeaver - Weaving Productivity into Your Life</small>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `
         };
         
-        transporter = nodemailer.createTransport(altConfig);
-        
-        transporter.verify((error, success) => {
-            if (error) {
-                consoleLog('ERROR', 'Alternative config also failed:', error.message);
+        // Send test email
+        sgMail.send(testMsg)
+            .then((response) => {
+                consoleLog('SUCCESS', '✓ SendGrid configured and working!');
+                consoleLog('SUCCESS', `  └─ Test email sent to: ${senderEmail}`);
+                consoleLog('SUCCESS', `  └─ Message ID: ${response[0].headers['x-message-id']}`);
+                emailConfigured = true;
+                transporter = 'sendgrid';
+            })
+            .catch((err) => {
+                consoleLog('ERROR', 'SendGrid test failed:', err.message);
+                if (err.response) {
+                    consoleLog('ERROR', 'Response body:', JSON.stringify(err.response.body, null, 2));
+                }
+                consoleLog('INFO', 'Common issues:');
+                consoleLog('INFO', '  1. Sender email not verified in SendGrid');
+                consoleLog('INFO', '  2. API key invalid or expired');
+                consoleLog('INFO', '  3. Free tier limits reached');
+                consoleLog('INFO', 'Verify sender at: https://app.sendgrid.com/settings/sender_auth');
+                emailConfigured = false;
                 transporter = null;
-            } else {
-                consoleLog('SUCCESS', '✓ Email connected on port 587');
-            }
-        });
+            });
+            
     } catch (error) {
-        consoleLog('ERROR', 'Alternative config error:', error.message);
+        consoleLog('ERROR', 'SendGrid setup error:', error.message);
         transporter = null;
+        emailConfigured = false;
     }
 }
 
 function sendEmail(to, subject, html) {
     return new Promise((resolve, reject) => {
-        if (!transporter) {
-            consoleLog('WARNING', `Email not sent - transporter not ready`);
+        // Check if email is configured
+        if (!emailConfigured || !transporter) {
+            consoleLog('WARNING', `Email not sent to ${to}: SendGrid not configured`);
             reject(new Error('Email service not configured'));
             return;
         }
         
-        consoleLog('INFO', `Attempting to send email to ${to}: ${subject}`);
+        // Validate recipient
+        if (!to || to === 'undefined' || to === 'null') {
+            consoleLog('ERROR', 'Invalid recipient email address');
+            reject(new Error('Invalid recipient email'));
+            return;
+        }
         
-        const mailOptions = {
-            from: `"TaskWeaver" <${process.env.EMAIL_USER}>`,
+        const senderEmail = process.env.EMAIL_USER.trim();
+        
+        consoleLog('INFO', `📧 Sending email via SendGrid`);
+        consoleLog('INFO', `  └─ To: ${to}`);
+        consoleLog('INFO', `  └─ Subject: ${subject}`);
+        
+        // Create email message
+        const msg = {
             to: to,
+            from: {
+                email: senderEmail,
+                name: 'TaskWeaver'
+            },
             subject: subject,
             html: html,
-            headers: {
-                'X-Priority': '3',
-                'X-Mailer': 'TaskWeaver'
+            text: html.replace(/<[^>]*>/g, ''), // Plain text version
+            trackingSettings: {
+                openTracking: { enable: true },
+                clickTracking: { enable: true }
             }
         };
         
-        // Add timeout to prevent hanging
-        const timeout = setTimeout(() => {
-            consoleLog('ERROR', `Email timeout after 30 seconds to ${to}`);
-            reject(new Error('Email sending timeout'));
-        }, 30000);
-        
-        transporter.sendMail(mailOptions, (error, info) => {
-            clearTimeout(timeout);
-            
-            if (error) {
-                consoleLog('ERROR', `Failed to send email to ${to}:`, error.message);
-                consoleLog('ERROR', `Error details:`, error);
+        // Send email
+        sgMail.send(msg)
+            .then((response) => {
+                consoleLog('SUCCESS', `✓ Email sent successfully to ${to}`);
+                consoleLog('SUCCESS', `  └─ Message ID: ${response[0].headers['x-message-id']}`);
+                resolve(response);
+            })
+            .catch((error) => {
+                consoleLog('ERROR', `✗ Failed to send email to ${to}`);
+                consoleLog('ERROR', `  └─ Error: ${error.message}`);
+                
+                if (error.response) {
+                    consoleLog('ERROR', `  └─ Response:`, error.response.body);
+                }
+                
                 reject(error);
-            } else {
-                consoleLog('SUCCESS', `✓ Email sent to ${to}: ${subject}`);
-                consoleLog('SUCCESS', `  └─ Message ID: ${info.messageId}`);
-                resolve(info);
-            }
-        });
+            });
     });
+}
+
+// Helper function to queue emails if needed
+let emailQueue = [];
+let isProcessingQueue = false;
+
+function queueEmail(to, subject, html) {
+    return new Promise((resolve, reject) => {
+        emailQueue.push({ to, subject, html, resolve, reject, timestamp: Date.now() });
+        processEmailQueue();
+    });
+}
+
+async function processEmailQueue() {
+    if (isProcessingQueue || emailQueue.length === 0) return;
+    isProcessingQueue = true;
+    
+    while (emailQueue.length > 0) {
+        const email = emailQueue.shift();
+        try {
+            const result = await sendEmail(email.to, email.subject, email.html);
+            email.resolve(result);
+        } catch (error) {
+            email.reject(error);
+        }
+        // Small delay between emails to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    isProcessingQueue = false;
 }
 
 // ============ CORS CONFIGURATION ============
