@@ -1284,6 +1284,112 @@ app.post('/api/reset-password', async (req, res) => {
     }
 });
 
+// ============ DEBUG ENDPOINTS ============
+
+// Check raw tasks data without any filtering
+app.get('/api/debug-tasks', requireAuth, async (req, res) => {
+    try {
+        consoleLog('INFO', `Debug tasks for user: ${req.session.email} (ID: ${req.session.userId})`);
+        
+        // Get ALL tasks for this user ID
+        const tasksByUserId = await pool.query(`
+            SELECT id, title, user_id, user_email, created_at, deleted_at, completed
+            FROM tasks 
+            WHERE user_id = $1
+            ORDER BY id DESC
+            LIMIT 20
+        `, [req.session.userId]);
+        
+        // Also check tasks by email in case of mismatch
+        const tasksByEmail = await pool.query(`
+            SELECT id, title, user_id, user_email, created_at, deleted_at, completed
+            FROM tasks 
+            WHERE user_email = $1
+            ORDER BY id DESC
+            LIMIT 20
+        `, [req.session.email]);
+        
+        // Get total count
+        const totalCount = await pool.query(`
+            SELECT COUNT(*) as total FROM tasks WHERE user_id = $1
+        `, [req.session.userId]);
+        
+        res.json({
+            sessionInfo: {
+                userId: req.session.userId,
+                email: req.session.email,
+                username: req.session.username
+            },
+            tasksByUserId: {
+                count: tasksByUserId.rows.length,
+                tasks: tasksByUserId.rows
+            },
+            tasksByEmail: {
+                count: tasksByEmail.rows.length,
+                tasks: tasksByEmail.rows
+            },
+            totalTasksForUser: parseInt(totalCount.rows[0].total),
+            message: tasksByUserId.rows.length === 0 && tasksByEmail.rows.length === 0 
+                ? 'No tasks found for this user in the database' 
+                : `Found ${tasksByUserId.rows.length} tasks by user_id and ${tasksByEmail.rows.length} tasks by email`
+        });
+        
+    } catch (error) {
+        consoleLog('ERROR', 'Debug tasks error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Check database tables structure
+app.get('/api/debug-schema', async (req, res) => {
+    try {
+        const tables = await pool.query(`
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            ORDER BY table_name
+        `);
+        
+        const tasksColumns = await pool.query(`
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns 
+            WHERE table_name = 'tasks'
+            ORDER BY ordinal_position
+        `);
+        
+        res.json({
+            tables: tables.rows.map(t => t.table_name),
+            tasksColumns: tasksColumns.rows,
+            message: 'Database schema info'
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Create a test task directly
+app.post('/api/create-test-task', requireAuth, async (req, res) => {
+    try {
+        const testTitle = `Test Task ${new Date().toLocaleTimeString()}`;
+        
+        const result = await pool.query(`
+            INSERT INTO tasks (user_id, user_email, title, description, severity, priority, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+            RETURNING *
+        `, [req.session.userId, req.session.email, testTitle, 'This is a test task created to verify task creation is working', 'Medium', 2]);
+        
+        consoleLog('SUCCESS', `Test task created: ${testTitle} for user ${req.session.email}`);
+        
+        res.json({
+            success: true,
+            message: 'Test task created',
+            task: result.rows[0]
+        });
+    } catch (error) {
+        consoleLog('ERROR', 'Create test task error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 // ============ USER SETTINGS ============
 app.get('/api/settings', requireAuth, async (req, res) => {
     consoleLog('INFO', `Loading settings for user: ${req.session.email}`);
