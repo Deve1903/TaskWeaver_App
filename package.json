@@ -15,7 +15,6 @@
     "bcrypt": "^5.1.1",
     "body-parser": "^1.20.2",
     "connect-pg-simple": "^10.0.0",
-    "connect-sqlite3": "^0.9.16",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "exceljs": "^4.4.0",
@@ -25,8 +24,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.7",
     "pdfkit": "^0.18.0",
-    "pg": "^8.20.0",
-    "sqlite3": "^5.1.6"
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
