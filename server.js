@@ -412,7 +412,7 @@ function getEmailTemplate(title, content, buttonText = null, buttonLink = null) 
             <div class="message">${content}</div>
             ${buttonText && buttonLink ? `<div style="text-align:center"><a href="${buttonLink}" class="button">${buttonText}</a></div>` : ''}
         </div>
-        <div class="footer"><p>© 2025 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
+        <div class="footer"><p>© 2026 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
     </div>
     </body>
     </html>`;
@@ -716,20 +716,40 @@ async function initializeDatabase() {
         
         // Shared schedules table
         await client.query(`
-            CREATE TABLE IF NOT EXISTS shared_schedules (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                user_email TEXT NOT NULL,
-                share_with_email TEXT NOT NULL,
-                share_token TEXT UNIQUE,
-                share_type TEXT DEFAULT 'view',
-                expires_at TIMESTAMP,
-                access_count INTEGER DEFAULT 0,
-                last_accessed TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+    CREATE TABLE IF NOT EXISTS shared_schedules (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_email TEXT NOT NULL,
+        share_with_email TEXT NOT NULL,
+        share_token TEXT UNIQUE,
+        share_type TEXT DEFAULT 'view',
+        expires_at TIMESTAMP,
+        access_count INTEGER DEFAULT 0,
+        last_accessed TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+`);
+consoleLog('SUCCESS', 'Shared schedules table ready');
+
+// Add columns to existing table if they don't exist (for backward compatibility)
+try {
+    const checkAccessCount = await client.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'shared_schedules' AND column_name = 'access_count'
+    `);
+    
+    if (checkAccessCount.rows.length === 0) {
+        await client.query(`
+            ALTER TABLE shared_schedules 
+            ADD COLUMN access_count INTEGER DEFAULT 0,
+            ADD COLUMN last_accessed TIMESTAMP
         `);
-        consoleLog('SUCCESS', 'Shared schedules table ready');
+        consoleLog('SUCCESS', 'Added access_count and last_accessed columns to existing shared_schedules table');
+    }
+} catch (err) {
+    consoleLog('WARNING', 'Could not add columns to shared_schedules:', err.message);
+}
         
         // Reminders table
         await client.query(`
@@ -1034,7 +1054,15 @@ async function initializeDatabase() {
                 consoleLog('WARNING', `Index creation skipped: ${err.message}`);
             }
         }
-        
+        try {
+    await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_shared_schedules_user_expires 
+        ON shared_schedules(user_id, expires_at)
+    `);
+    consoleLog('SUCCESS', 'Created index for share history deletion');
+} catch (err) {
+    consoleLog('WARNING', 'Could not create index:', err.message);
+}
         // Create demo user
         const demoEmail = 'demo@taskweaver.com';
         const existingDemo = await client.query('SELECT id FROM users WHERE email = $1', [demoEmail]);
@@ -1058,7 +1086,36 @@ async function initializeDatabase() {
         client.release();
     }
 }
+async function migrateSharedSchedulesTable() {
+    const client = await pool.connect();
+    try {
+        // Check if access_count column exists
+        const checkAccessCount = await client.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'shared_schedules' AND column_name = 'access_count'
+        `);
+        
+        if (checkAccessCount.rows.length === 0) {
+            consoleLog('INFO', 'Migrating shared_schedules table to add access_count and last_accessed...');
+            await client.query(`
+                ALTER TABLE shared_schedules 
+                ADD COLUMN IF NOT EXISTS access_count INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS last_accessed TIMESTAMP
+            `);
+            consoleLog('SUCCESS', 'Migration completed: added access tracking columns');
+        } else {
+            consoleLog('INFO', 'Shared_schedules table already has access tracking columns');
+        }
+    } catch (err) {
+        consoleLog('ERROR', 'Migration failed:', err.message);
+    } finally {
+        client.release();
+    }
+}
 
+// Call this function after initializeDatabase
+await migrateSharedSchedulesTable();
 // ============ HEALTH CHECK ============
 app.get('/api/health', async (req, res) => {
     try {
@@ -1628,11 +1685,11 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
         const shareToken = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
         
-        await pool.query(
-            `INSERT INTO shared_schedules (user_id, user_email, share_with_email, share_token, share_type, expires_at, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-            [userId, userEmail, shareWithEmail, shareToken, shareType, expiresAt]
-        );
+       await pool.query(
+    `INSERT INTO shared_schedules (user_id, user_email, share_with_email, share_token, share_type, expires_at, access_count, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 0, NOW())`,
+    [userId, userEmail, shareWithEmail, shareToken, shareType, expiresAt]
+);
         
         const tasksResult = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND deleted_at IS NULL ORDER BY scheduled_start ASC, deadline ASC`,
@@ -1728,7 +1785,13 @@ app.get('/api/view-shared-schedule', async (req, res) => {
             return res.status(404).json({ error: 'Invalid or expired share link' });
         }
         
-        await pool.query('UPDATE shared_schedules SET access_count = access_count + 1, last_accessed = NOW() WHERE id = $1', [share.id]);
+        try {
+    await pool.query('UPDATE shared_schedules SET access_count = COALESCE(access_count, 0) + 1, last_accessed = NOW() WHERE id = $1', [share.id]);
+} catch (err) {
+    // If column doesn't exist, just update without it
+    consoleLog('WARNING', 'access_count column not found, skipping increment');
+    await pool.query('UPDATE shared_schedules SET last_accessed = NOW() WHERE id = $1', [share.id]);
+}
         
         const tasksResult = await pool.query(
             `SELECT * FROM tasks WHERE user_id = $1 AND deleted_at IS NULL ORDER BY scheduled_start ASC, deadline ASC`,
@@ -1784,33 +1847,34 @@ app.get('/api/view-shared-schedule', async (req, res) => {
 
 app.get('/api/my-shared-schedules', requireAuth, async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT ss.*, 
-                   u.username as shared_with_username,
-                   COUNT(DISTINCT t.id) as task_count,
-                   CASE WHEN ss.expires_at > NOW() THEN 'active' ELSE 'expired' END as status
-            FROM shared_schedules ss
-            LEFT JOIN users u ON ss.share_with_email = u.email
-            LEFT JOIN tasks t ON t.user_id = ss.user_id AND t.deleted_at IS NULL
-            WHERE ss.user_id = $1
-            GROUP BY ss.id, u.username
-            ORDER BY ss.created_at DESC
-        `, [req.session.userId]);
+       const result = await pool.query(`
+    SELECT ss.*, 
+           u.username as shared_with_username,
+           COUNT(DISTINCT t.id) as task_count,
+           CASE WHEN ss.expires_at > NOW() THEN 'active' ELSE 'expired' END as status,
+           COALESCE(ss.access_count, 0) as access_count
+    FROM shared_schedules ss
+    LEFT JOIN users u ON ss.share_with_email = u.email
+    LEFT JOIN tasks t ON t.user_id = ss.user_id AND t.deleted_at IS NULL
+    WHERE ss.user_id = $1
+    GROUP BY ss.id, u.username, ss.access_count, ss.expires_at, ss.share_with_email, ss.share_token, ss.share_type, ss.created_at, ss.last_accessed
+    ORDER BY ss.created_at DESC
+`, [req.session.userId]);
         
-        const formattedSchedules = result.rows.map(schedule => ({
-            id: schedule.id,
-            shareWithEmail: schedule.share_with_email,
-            shareWithUsername: schedule.shared_with_username || schedule.share_with_email,
-            shareToken: schedule.share_token,
-            shareType: schedule.share_type,
-            expiresAt: formatTimestampForResponse(schedule.expires_at),
-            createdAt: formatTimestampForResponse(schedule.created_at),
-            accessCount: schedule.access_count || 0,
-            lastAccessed: formatTimestampForResponse(schedule.last_accessed),
-            taskCount: parseInt(schedule.task_count),
-            status: schedule.status,
-            shareLink: `https://${req.get('host')}/shared-schedule.html?token=${schedule.share_token}`
-        }));
+ const formattedSchedules = result.rows.map(schedule => ({
+    id: schedule.id,  // Make sure id is included
+    shareWithEmail: schedule.share_with_email,
+    shareWithUsername: schedule.shared_with_username || schedule.share_with_email,
+    shareToken: schedule.share_token,
+    shareType: schedule.share_type,
+    expiresAt: formatTimestampForResponse(schedule.expires_at),
+    createdAt: formatTimestampForResponse(schedule.created_at),
+    accessCount: schedule.access_count || 0,
+    lastAccessed: formatTimestampForResponse(schedule.last_accessed),
+    taskCount: parseInt(schedule.task_count),
+    status: schedule.status,
+    shareLink: `https://${req.get('host')}/shared-schedule.html?token=${schedule.share_token}`
+}));
         
         res.json(formattedSchedules);
     } catch (err) {
@@ -1836,6 +1900,85 @@ app.delete('/api/revoke-share/:token', requireAuth, async (req, res) => {
         res.json({ success: true, message: 'Share link revoked successfully' });
     } catch (err) {
         consoleLog('ERROR', `Failed to revoke share:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete shared history (soft delete or permanent delete)
+app.delete('/api/delete-share-history/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    consoleLog('INFO', `Deleting share history ID: ${id} for user: ${req.session.email}`);
+    
+    try {
+        // First verify this share belongs to the user
+        const shareCheck = await pool.query(
+            'SELECT id, share_with_email, share_token FROM shared_schedules WHERE id = $1 AND user_id = $2',
+            [id, req.session.userId]
+        );
+        
+        if (shareCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Share record not found' });
+        }
+        
+        const share = shareCheck.rows[0];
+        
+        // Delete the share record
+        await pool.query(
+            'DELETE FROM shared_schedules WHERE id = $1 AND user_id = $2',
+            [id, req.session.userId]
+        );
+        
+        await logUserActivity(
+            req.session.userId, 
+            req.session.email, 
+            'DELETE_SHARE_HISTORY', 
+            `Deleted share history for ${share.share_with_email}`,
+            req
+        );
+        
+        res.json({ 
+            success: true, 
+            message: 'Share history deleted successfully',
+            deletedShare: {
+                id: share.id,
+                sharedWith: share.share_with_email
+            }
+        });
+    } catch (err) {
+        consoleLog('ERROR', `Failed to delete share history:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Alternative: Batch delete all expired shares
+app.delete('/api/delete-all-expired-shares', requireAuth, async (req, res) => {
+    consoleLog('INFO', `Deleting all expired shares for user: ${req.session.email}`);
+    
+    try {
+        const result = await pool.query(
+            'DELETE FROM shared_schedules WHERE user_id = $1 AND expires_at < NOW() RETURNING id, share_with_email',
+            [req.session.userId]
+        );
+        
+        const deletedCount = result.rows.length;
+        const deletedEmails = result.rows.map(r => r.share_with_email);
+        
+        await logUserActivity(
+            req.session.userId, 
+            req.session.email, 
+            'DELETE_ALL_EXPIRED_SHARES', 
+            `Deleted ${deletedCount} expired share(s)`,
+            req
+        );
+        
+        res.json({ 
+            success: true, 
+            message: `Deleted ${deletedCount} expired share(s)`,
+            deletedCount: deletedCount,
+            deletedEmails: deletedEmails
+        });
+    } catch (err) {
+        consoleLog('ERROR', `Failed to delete expired shares:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
