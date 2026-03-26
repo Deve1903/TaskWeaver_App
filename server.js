@@ -17,7 +17,6 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const cron = require('node-cron');  
-const schedule = require('node-schedule');
 const moment = require('moment-timezone');
 const ical = require('ical-generator');
 const QRCode = require('qrcode');
@@ -176,17 +175,21 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
 // ============ STATIC FILE SERVING ============
+// IMPORTANT: This must come BEFORE any custom routes that might interfere
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/shared', express.static(path.join(__dirname, 'public/shared')));
 
+// Simple route handlers for HTML files - only these specific routes
 app.get('/', (req, res) => { 
     consoleLog('INFO', `Serving index.html to ${req.ip}`);
     res.sendFile(path.join(__dirname, 'public', 'index.html')); 
 });
+
 app.get('/login', (req, res) => { 
     consoleLog('INFO', `Serving login.html to ${req.ip}`);
     res.sendFile(path.join(__dirname, 'public', 'login.html')); 
 });
+
 app.get('/reset-password.html', (req, res) => { 
     res.sendFile(path.join(__dirname, 'public', 'reset-password.html')); 
 });
@@ -376,10 +379,39 @@ function getEmailTemplate(title, content, buttonText = null, buttonLink = null) 
             <div class="message">${content}</div>
             ${buttonText && buttonLink ? `<div style="text-align:center"><a href="${buttonLink}" class="button">${buttonText}</a></div>` : ''}
         </div>
-        <div class="footer"><p>© 202 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
+        <div class="footer"><p>© 2025 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
     </div>
     </body>
     </html>`;
+}
+
+function getShareEmailTemplate(senderName, senderEmail, recipientName, taskCount, shareType, expiresAt, shareLink) {
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8"><title>Schedule Shared with You</title></head>
+        <body style="font-family: Arial, sans-serif;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="background: linear-gradient(135deg, #667eea, #764ba2); padding: 30px; text-align: center; border-radius: 12px;">
+                    <h1 style="color: white;">⚡ TaskWeaver</h1>
+                </div>
+                <h2>Hello ${recipientName}! 👋</h2>
+                <p><strong>${senderName}</strong> (${senderEmail}) has shared their schedule with you.</p>
+                <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <strong>Schedule Details:</strong><br>
+                    Total Tasks: ${taskCount}<br>
+                    Share Type: ${shareType}<br>
+                    Expires: ${new Date(expiresAt).toLocaleString()}
+                </div>
+                <div style="text-align: center;">
+                    <a href="${shareLink}" style="display: inline-block; background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px;">📅 View Schedule Online</a>
+                </div>
+                <hr>
+                <small>This link expires in 24 hours. All access is logged and monitored.</small>
+            </div>
+        </body>
+        </html>
+    `;
 }
 
 // ============ EMAIL TRANSPORTER ============
@@ -609,7 +641,7 @@ async function generateProfessionalPDF(tasks, user, shareToken = null) {
         });
         
         if (shareToken) {
-            const qrData = `${process.env.BASE_URL}/shared/${shareToken}`;
+            const qrData = `${process.env.BASE_URL || 'https://taskweaver.onrender.com'}/shared/${shareToken}`;
             QRCode.toBuffer(qrData, { width: 100 }, (err, buffer) => {
                 if (!err) doc.image(buffer, doc.page.width - 120, doc.page.height - 80, { width: 80 });
             });
@@ -684,7 +716,9 @@ async function generateWordDocument(tasks, user) {
             <div class="header"><h1>⚡ TaskWeaver Report</h1></div>
             <p><strong>Generated for:</strong> ${user.email}<br><strong>Date:</strong> ${moment().format('MMMM Do YYYY, h:mm:ss a')}</p>
             <table>
-                <thead><tr><th>#</th><th>Task Title</th><th>Project</th><th>Severity</th><th>Deadline</th><th>Status</th></tr></thead>
+                <thead>
+                    <tr><th>#</th><th>Task Title</th><th>Project</th><th>Severity</th><th>Deadline</th><th>Status</th></tr>
+                </thead>
                 <tbody>
                     ${tasks.map((task, index) => `
                         <tr>
@@ -763,7 +797,7 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        secure: false,  // ← BACK TO ORIGINAL WORKING VALUE
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000,
         sameSite: 'lax'
@@ -772,7 +806,7 @@ app.use(session({
     rolling: true
 }));
 
-// Optional debug endpoint (keep if you want, but remove requireAuth if it causes issues)
+// Debug session endpoint
 app.get('/api/debug-session', async (req, res) => {
     res.json({ 
         sessionID: req.sessionID,
@@ -781,7 +815,6 @@ app.get('/api/debug-session', async (req, res) => {
         hasSession: !!req.session
     });
 });
-
 
 // ============ AUTHENTICATION MIDDLEWARE ============
 function requireAuth(req, res, next) {
@@ -1491,35 +1524,6 @@ app.post('/api/share-schedule', requireAuth, async (req, res) => {
     }
 });
 
-function getShareEmailTemplate(senderName, senderEmail, recipientName, taskCount, shareType, expiresAt, shareLink) {
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head><meta charset="UTF-8"><title>Schedule Shared with You</title></head>
-        <body style="font-family: Arial, sans-serif;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="background: linear-gradient(135deg, #667eea, #764ba2); padding: 30px; text-align: center; border-radius: 12px;">
-                    <h1 style="color: white;">⚡ TaskWeaver</h1>
-                </div>
-                <h2>Hello ${recipientName}! 👋</h2>
-                <p><strong>${senderName}</strong> (${senderEmail}) has shared their schedule with you.</p>
-                <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <strong>Schedule Details:</strong><br>
-                    Total Tasks: ${taskCount}<br>
-                    Share Type: ${shareType}<br>
-                    Expires: ${new Date(expiresAt).toLocaleString()}
-                </div>
-                <div style="text-align: center;">
-                    <a href="${shareLink}" style="display: inline-block; background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px;">📅 View Schedule Online</a>
-                </div>
-                <hr>
-                <small>This link expires in 24 hours. All access is logged and monitored.</small>
-            </div>
-        </body>
-        </html>
-    `;
-}
-
 app.get('/api/view-shared-schedule', async (req, res) => {
     const { token, format = 'json' } = req.query;
     
@@ -1617,6 +1621,11 @@ app.get('/api/export-schedule', requireAuth, async (req, res) => {
             res.setHeader('Content-Type', 'text/csv');
             res.setHeader('Content-Disposition', `attachment; filename=my_schedule_${moment().format('YYYY-MM-DD')}.csv`);
             res.send(csvData);
+        } else if (format === 'ical') {
+            const icalData = generateICalendar(tasks);
+            res.setHeader('Content-Type', 'text/calendar');
+            res.setHeader('Content-Disposition', `attachment; filename=my_schedule_${moment().format('YYYY-MM-DD')}.ics`);
+            res.send(icalData);
         } else {
             res.status(400).json({ error: 'Invalid format' });
         }
@@ -2082,9 +2091,18 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
+// 404 handler - Only for routes that don't match any static file or API route
 app.use((req, res) => {
-    consoleLog('WARNING', `404 - Route not found: ${req.method} ${req.url}`);
-    res.status(404).json({ error: 'Not found' });
+    // Don't serve index.html here - just return 404 for API routes
+    if (req.path.startsWith('/api')) {
+        consoleLog('WARNING', `404 - API route not found: ${req.method} ${req.url}`);
+        res.status(404).json({ error: 'API endpoint not found' });
+    } else {
+        // For non-API routes, let the frontend handle it (SPA)
+        // But we don't want to serve index.html for every request
+        consoleLog('WARNING', `404 - Page not found: ${req.method} ${req.url}`);
+        res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+    }
 });
 
 // ============ SERVER STARTUP ============
