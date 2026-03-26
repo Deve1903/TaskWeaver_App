@@ -22,7 +22,7 @@ const ical = require('ical-generator');
 const QRCode = require('qrcode');
 const sanitizeHtml = require('sanitize-html');
 const winston = require('winston');
-const { createCanvas } = require('canvas');
+
 const natural = require('natural');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
