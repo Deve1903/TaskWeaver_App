@@ -1114,8 +1114,7 @@ async function migrateSharedSchedulesTable() {
     }
 }
 
-// Call this function after initializeDatabase
-await migrateSharedSchedulesTable();
+
 // ============ HEALTH CHECK ============
 app.get('/api/health', async (req, res) => {
     try {
@@ -2310,6 +2309,10 @@ async function startServer() {
         consoleLog('INFO', 'Starting TaskWeaver server with auto-fix capabilities...');
         
         await initializeDatabase();
+        
+        // Call the migration function here (inside async function)
+        await migrateSharedSchedulesTable();
+        
         setupEmailTransporter();
         
         app.listen(port, '0.0.0.0', () => {
