@@ -376,7 +376,7 @@ function getEmailTemplate(title, content, buttonText = null, buttonLink = null) 
             <div class="message">${content}</div>
             ${buttonText && buttonLink ? `<div style="text-align:center"><a href="${buttonLink}" class="button">${buttonText}</a></div>` : ''}
         </div>
-        <div class="footer"><p>© 2025 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
+        <div class="footer"><p>© 2026 TaskWeaver. All rights reserved.</p><p>Made with ❤️ for better productivity</p></div>
     </div>
     </body>
     </html>`;
@@ -753,6 +753,8 @@ async function generateRecurringTasks(parentTaskId, pattern, endDate, userId) {
 }
 
 // ============ SESSION CONFIGURATION ============
+app.set('trust proxy', 1); // Required for Render
+
 app.use(session({
     store: new pgSession({
         pool: pool,
@@ -763,22 +765,27 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production', // Important for HTTPS
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'lax'
+        sameSite: 'lax',
+        domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
     },
     name: 'taskweaver.sid',
-    rolling: true
+    rolling: true,
+    proxy: true // Important for Render
 }));
 
-app.use((req, res, next) => {
-    if (req.session && req.session.userId) {
-        res.locals.userId = req.session.userId;
-        res.locals.email = req.session.email;
-    }
-    next();
+// Add session debug endpoint
+app.get('/api/debug-session', requireAuth, async (req, res) => {
+    res.json({ 
+        sessionID: req.sessionID,
+        userId: req.session.userId,
+        email: req.session.email,
+        cookie: req.session.cookie
+    });
 });
+
 
 // ============ AUTHENTICATION MIDDLEWARE ============
 function requireAuth(req, res, next) {
