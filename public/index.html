@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>TaskWeaver - Silk Calendar Dashboard</title>
+    <title>TaskWeaver - Professional Task Management</title>
     
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -14,8 +14,8 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
-    <!-- SortableJS -->
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
     <style>
         * {
@@ -44,7 +44,6 @@
             overflow-x: hidden;
         }
 
-        /* Container Responsive */
         .container-fluid {
             padding: 12px;
         }
@@ -55,7 +54,6 @@
             }
         }
 
-        /* Glass Card */
         .glass-card {
             background: rgba(255, 255, 255, 0.98);
             backdrop-filter: blur(20px);
@@ -71,7 +69,6 @@
             }
         }
 
-        /* Funnel & Calendar Containers */
         .funnel-container, .calendar-container {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
@@ -79,23 +76,25 @@
             padding: 16px;
             margin-bottom: 16px;
             transition: all 0.3s ease;
+            height: auto;
+            overflow-y: auto;
         }
         
         @media (min-width: 768px) {
             .funnel-container {
                 height: calc(100vh - 140px);
-                margin-bottom: 0;
-                overflow-y: auto;
             }
-            
             .calendar-container {
                 height: calc(100vh - 140px);
-                margin-bottom: 0;
-                overflow-y: auto;
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .funnel-container, .calendar-container {
+                max-height: 50vh;
             }
         }
 
-        /* Funnel Header with Controls */
         .funnel-header {
             display: flex;
             justify-content: space-between;
@@ -105,6 +104,10 @@
             margin-bottom: 16px;
             padding-bottom: 12px;
             border-bottom: 2px solid rgba(107, 70, 193, 0.2);
+            position: sticky;
+            top: 0;
+            background: inherit;
+            z-index: 5;
         }
         
         .funnel-title {
@@ -140,11 +143,6 @@
             color: white;
         }
         
-        .funnel-toggle-btn.active {
-            background: var(--primary);
-            color: white;
-        }
-        
         .funnel-stats {
             background: rgba(107, 70, 193, 0.1);
             border-radius: 20px;
@@ -154,7 +152,28 @@
             font-weight: 500;
         }
         
-        /* Filter Buttons */
+        .search-bar {
+            margin-bottom: 16px;
+            position: relative;
+        }
+        
+        .search-bar input {
+            border-radius: 24px;
+            padding: 10px 40px 10px 16px;
+            border: 1px solid rgba(107, 70, 193, 0.3);
+            width: 100%;
+            font-size: 0.85rem;
+        }
+        
+        .search-bar i {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray);
+            pointer-events: none;
+        }
+        
         .filter-scroll {
             overflow-x: auto;
             overflow-y: hidden;
@@ -199,7 +218,6 @@
             border-color: var(--primary);
         }
         
-        /* Task Cards */
         .task-card {
             background: white;
             border-radius: 16px;
@@ -231,21 +249,6 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
         
-        .task-card.dragging {
-            opacity: 0.5;
-            cursor: grabbing;
-        }
-        
-        .task-card.task-hidden {
-            display: none;
-        }
-        
-        /* Severity Colors */
-        .task-critical { border-left-color: #dc3545; }
-        .task-high { border-left-color: #fd7e14; }
-        .task-medium { border-left-color: #ffc107; }
-        .task-low { border-left-color: #28a745; }
-
         .task-title {
             font-weight: 600;
             font-size: 0.9rem;
@@ -271,7 +274,6 @@
         .severity-Medium { background: #ffc107; color: black; }
         .severity-Low { background: #28a745; color: white; }
         
-        /* Empty State */
         .empty-funnel {
             text-align: center;
             padding: 40px 20px;
@@ -284,7 +286,43 @@
             opacity: 0.5;
         }
         
-        /* Calendar Customization */
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+        }
+        
+        .pagination-btn {
+            background: transparent;
+            border: 1px solid var(--primary);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--primary);
+        }
+        
+        .pagination-btn:hover:not(:disabled) {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        
         .fc {
             font-size: 12px;
         }
@@ -313,14 +351,6 @@
             margin-bottom: 1em !important;
         }
         
-        .fc-header-toolbar .fc-left,
-        .fc-header-toolbar .fc-center,
-        .fc-header-toolbar .fc-right {
-            float: none;
-            display: flex;
-            justify-content: center;
-        }
-        
         .fc-toolbar-chunk {
             display: flex;
             gap: 6px;
@@ -343,17 +373,12 @@
                 height: 80px !important;
             }
             
-            .fc-header-toolbar {
-                flex-direction: row;
-            }
-            
             .fc-button {
                 padding: 8px 14px !important;
                 font-size: 0.85rem !important;
             }
         }
         
-        /* Calendar View Buttons */
         .calendar-view-buttons {
             display: flex;
             gap: 6px;
@@ -385,7 +410,14 @@
             }
         }
         
-        /* Custom Modal Styles */
+        .modal {
+            z-index: 1060;
+        }
+        
+        .modal-backdrop {
+            z-index: 1050;
+        }
+        
         .modal-content {
             border-radius: 24px;
             border: none;
@@ -395,10 +427,14 @@
         .modal-header {
             border: none;
             padding: 20px 24px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
         }
         
         .modal-body {
             padding: 24px;
+            max-height: 60vh;
+            overflow-y: auto;
         }
         
         .modal-footer {
@@ -428,12 +464,6 @@
             color: var(--secondary);
         }
         
-        .confirmation-icon.info {
-            background: rgba(66, 153, 225, 0.1);
-            color: var(--info);
-        }
-        
-        /* Toast Notifications */
         .toast-notification {
             position: fixed;
             bottom: 20px;
@@ -443,6 +473,13 @@
             max-width: 400px;
             margin: 0 auto;
             animation: slideInUp 0.3s ease-out;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
         
         @media (min-width: 768px) {
@@ -463,7 +500,6 @@
             to { transform: translateY(100%); opacity: 0; }
         }
         
-        /* Quick Add Button */
         .quick-add-btn {
             position: fixed;
             bottom: 20px;
@@ -499,7 +535,24 @@
             box-shadow: 0 8px 20px rgba(107, 70, 193, 0.5);
         }
         
-        /* Loading Spinner */
+        .stats-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 16px;
+            padding: 16px;
+            color: white;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
         .loading-spinner {
             position: fixed;
             top: 50%;
@@ -512,7 +565,6 @@
             display: none;
         }
         
-        /* Responsive Text */
         @media (max-width: 576px) {
             .header-buttons {
                 justify-content: center;
@@ -530,7 +582,6 @@
             }
         }
         
-        /* Scrollbar Styling */
         ::-webkit-scrollbar {
             width: 4px;
             height: 4px;
@@ -546,7 +597,6 @@
             border-radius: 10px;
         }
         
-        /* Better touch targets */
         button, 
         .task-card,
         .filter-btn,
@@ -556,9 +606,48 @@
             touch-action: manipulation;
         }
         
-        /* Form elements responsive */
         input, select, textarea {
             font-size: 16px !important;
+        }
+        
+        .project-card {
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid var(--primary);
+        }
+        
+        .project-card:hover {
+            transform: translateX(4px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .project-progress {
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        
+        .project-progress-bar {
+            height: 100%;
+            background: var(--primary);
+            transition: width 0.3s;
+        }
+        
+        .activity-item {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            font-size: 0.8rem;
+        }
+        
+        .activity-time {
+            color: var(--gray);
+            font-size: 0.7rem;
         }
     </style>
 </head>
@@ -584,10 +673,13 @@
                                     <h2 class="mb-0" style="font-size: 1.5rem; background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
                                         TaskWeaver
                                     </h2>
-                                    <small class="text-muted d-none d-sm-block">Silk Calendar & Task Funnel</small>
+                                    <small class="text-muted d-none d-sm-block">Professional Task Management Suite</small>
                                 </div>
                             </div>
-                            <div class="header-buttons">
+                            <div class="header-buttons d-flex flex-wrap gap-2 justify-content-center">
+                                <button class="btn btn-outline-primary btn-sm" onclick="openProjectsModal()">
+                                    <i class="fas fa-project-diagram"></i> <span class="d-none d-sm-inline">Projects</span>
+                                </button>
                                 <button class="btn btn-outline-primary btn-sm" onclick="openShareModal()">
                                     <i class="fas fa-share-alt"></i> <span class="d-none d-sm-inline">Share</span>
                                 </button>
@@ -597,10 +689,13 @@
                                 <button class="btn btn-outline-info btn-sm" onclick="viewStats()">
                                     <i class="fas fa-chart-line"></i> <span class="d-none d-sm-inline">Stats</span>
                                 </button>
+                                <button class="btn btn-outline-info btn-sm" onclick="viewActivity()">
+                                    <i class="fas fa-history"></i> <span class="d-none d-sm-inline">Activity</span>
+                                </button>
                                 <button class="btn btn-outline-primary btn-sm" onclick="openSettingsModal()">
                                     <i class="fas fa-cog"></i>
                                 </button>
-                                <div id="userDisplay" class="fw-bold small"></div>
+                                <div id="userDisplay" class="fw-bold small d-flex align-items-center"></div>
                                 <button class="btn btn-outline-danger btn-sm" onclick="showLogoutConfirmation()">
                                     <i class="fas fa-sign-out-alt"></i>
                                 </button>
@@ -628,7 +723,11 @@
                         </div>
                         
                         <div id="funnelContent">
-                            <!-- Filters - Scrollable on mobile -->
+                            <div class="search-bar">
+                                <input type="text" id="taskSearchInput" placeholder="Search tasks..." onkeyup="filterTasks()">
+                                <i class="fas fa-search"></i>
+                            </div>
+                            
                             <div class="filter-scroll">
                                 <button class="filter-btn active" data-filter="all">All</button>
                                 <button class="filter-btn" data-filter="Critical">🔴 Critical</button>
@@ -638,9 +737,11 @@
                                 <button class="filter-btn" data-filter="Work">💼 Work</button>
                                 <button class="filter-btn" data-filter="Study">📚 Study</button>
                                 <button class="filter-btn" data-filter="Family">👨‍👩‍👧 Family</button>
+                                <button class="filter-btn" data-filter="Rest">😴 Rest</button>
                             </div>
                             
-                            <div id="funnelTasksList" style="max-height: calc(100% - 80px); overflow-y: auto;"></div>
+                            <div id="funnelTasksList" style="max-height: calc(100% - 180px); overflow-y: auto;"></div>
+                            <div class="pagination-container" id="funnelPagination"></div>
                         </div>
                     </div>
                 </div>
@@ -648,11 +749,11 @@
                 <!-- Right Side - Calendar -->
                 <div class="col-12 col-md-8">
                     <div class="calendar-container">
-                        <!-- Custom Calendar View Buttons -->
                         <div class="calendar-view-buttons">
                             <button class="view-btn" data-view="timeGridDay">📅 Day</button>
                             <button class="view-btn active" data-view="timeGridWeek">📆 Week</button>
                             <button class="view-btn" data-view="dayGridMonth">🗓️ Month</button>
+                            <button class="view-btn" data-view="listWeek">📋 List</button>
                         </div>
                         <div id="calendar"></div>
                     </div>
@@ -661,15 +762,14 @@
         </div>
     </div>
 
-    <!-- Quick Add Button -->
     <button class="quick-add-btn" onclick="openQuickAddModal()"><i class="fas fa-plus"></i></button>
 
-    <!-- Confirmation Modal for Logout -->
+    <!-- All Modals -->
     <div class="modal fade" id="logoutConfirmModal" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #f56565, #e53e3e); color: white; text-align: center;">
-                    <h5 class="modal-title w-100"><i class="fas fa-sign-out-alt me-2"></i>Confirm Logout</h5>
+                <div class="modal-header">
+                    <h5 class="modal-title w-100 text-center"><i class="fas fa-sign-out-alt me-2"></i>Confirm Logout</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body text-center py-4">
@@ -677,21 +777,16 @@
                         <i class="fas fa-question-circle"></i>
                     </div>
                     <h5 class="mb-2">Ready to leave?</h5>
-                    <p class="text-muted mb-0">Are you sure you want to logout? You'll need to login again to access your tasks.</p>
+                    <p class="text-muted mb-0">Are you sure you want to logout?</p>
                 </div>
                 <div class="modal-footer justify-content-center">
-                    <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-2"></i>Cancel
-                    </button>
-                    <button class="btn btn-danger px-4" onclick="confirmLogout()">
-                        <i class="fas fa-sign-out-alt me-2"></i>Logout
-                    </button>
+                    <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-danger px-4" onclick="confirmLogout()">Logout</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Success Modal -->
     <div class="modal fade" id="successModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content">
@@ -703,19 +798,16 @@
                     <p class="text-muted mb-0" id="successDetails">Action completed successfully</p>
                 </div>
                 <div class="modal-footer justify-content-center">
-                    <button class="btn btn-primary px-4" data-bs-dismiss="modal">
-                        <i class="fas fa-check me-2"></i>OK
-                    </button>
+                    <button class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Error Modal -->
     <div class="modal fade" id="errorModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #f56565, #e53e3e); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Error</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -729,11 +821,10 @@
         </div>
     </div>
 
-    <!-- Info Modal -->
     <div class="modal fade" id="infoModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--info), #3182ce); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-info-circle me-2"></i>Information</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -747,11 +838,10 @@
         </div>
     </div>
 
-    <!-- Warning Modal -->
     <div class="modal fade" id="warningModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--warning), #ed8936); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Warning</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -765,11 +855,10 @@
         </div>
     </div>
 
-    <!-- Confirmation Modal for Delete -->
     <div class="modal fade" id="deleteConfirmModal" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #f56565, #e53e3e); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-trash-alt me-2"></i>Confirm Delete</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -778,7 +867,7 @@
                         <i class="fas fa-exclamation-triangle"></i>
                     </div>
                     <h5 class="mb-2">Delete Task?</h5>
-                    <p class="text-muted" id="deleteTaskMessage">Are you sure you want to delete this task? This action cannot be undone.</p>
+                    <p class="text-muted" id="deleteTaskMessage">This action cannot be undone.</p>
                 </div>
                 <div class="modal-footer justify-content-center">
                     <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
@@ -788,11 +877,10 @@
         </div>
     </div>
 
-    <!-- Task Modal -->
     <div class="modal fade" id="taskModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title" id="taskModalTitle">Task Details</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -807,11 +895,10 @@
         </div>
     </div>
 
-    <!-- Schedule Popup Modal -->
     <div class="modal fade" id="schedulePopupModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-calendar-alt me-2"></i>Schedule Task</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -827,18 +914,17 @@
                     </div>
                     <div class="d-flex gap-2 justify-content-end">
                         <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                        <button class="btn btn-primary btn-sm" onclick="confirmScheduleFromPopup()"><i class="fas fa-check"></i> Confirm</button>
+                        <button class="btn btn-primary btn-sm" onclick="confirmScheduleFromPopup()">Confirm</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Add Task Modal -->
     <div class="modal fade" id="addTaskModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i>Add New Task</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -878,9 +964,17 @@
                                 </select>
                             </div>
                             <div class="col-6 mb-3">
-                                <label class="form-label">Deadline</label>
-                                <input type="datetime-local" class="form-control" id="quickTaskDeadline">
+                                <label class="form-label">Priority (1-5)</label>
+                                <input type="number" class="form-control" id="quickTaskPriority" min="1" max="5" value="2">
                             </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Deadline</label>
+                            <input type="datetime-local" class="form-control" id="quickTaskDeadline">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Tags</label>
+                            <input type="text" class="form-control" id="quickTaskTags" placeholder="comma,separated,tags">
                         </div>
                         
                         <div class="mb-3">
@@ -915,7 +1009,12 @@
                                 <option value="daily">Daily</option>
                                 <option value="weekly">Weekly</option>
                                 <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
                             </select>
+                            <div class="mt-2">
+                                <label class="form-label">End Date</label>
+                                <input type="date" class="form-control" id="quickTaskRecurrenceEnd">
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -927,11 +1026,10 @@
         </div>
     </div>
 
-    <!-- Share Schedule Modal -->
     <div class="modal fade" id="shareModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-share-alt me-2"></i>Share Schedule</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -947,6 +1045,16 @@
                             <option value="edit">Edit (Coming Soon)</option>
                         </select>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Export Format</label>
+                        <select class="form-select" id="shareFormat">
+                            <option value="pdf">PDF Document</option>
+                            <option value="excel">Excel Spreadsheet</option>
+                            <option value="word">Word Document</option>
+                            <option value="csv">CSV File</option>
+                            <option value="ical">iCalendar</option>
+                        </select>
+                    </div>
                     <button class="btn btn-primary w-100 btn-sm" onclick="shareSchedule()">
                         <i class="fas fa-paper-plane"></i> Share
                     </button>
@@ -955,26 +1063,31 @@
         </div>
     </div>
 
-    <!-- Export Modal -->
     <div class="modal fade" id="exportModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-download me-2"></i>Export Schedule</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="d-grid gap-2">
                         <button class="btn btn-outline-primary btn-sm" onclick="exportSchedule('pdf')">
-                            <i class="fas fa-file-pdf"></i> PDF
+                            <i class="fas fa-file-pdf"></i> Professional PDF
                         </button>
                         <button class="btn btn-outline-success btn-sm" onclick="exportSchedule('excel')">
                             <i class="fas fa-file-excel"></i> Excel
                         </button>
-                        <button class="btn btn-outline-info btn-sm" onclick="exportSchedule('csv')">
+                        <button class="btn btn-outline-info btn-sm" onclick="exportSchedule('word')">
+                            <i class="fas fa-file-word"></i> Word Document
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="exportSchedule('csv')">
                             <i class="fas fa-file-csv"></i> CSV
                         </button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="exportSchedule('json')">
+                        <button class="btn btn-outline-warning btn-sm" onclick="exportSchedule('ical')">
+                            <i class="fas fa-calendar-alt"></i> iCalendar
+                        </button>
+                        <button class="btn btn-outline-dark btn-sm" onclick="exportSchedule('json')">
                             <i class="fas fa-code"></i> JSON
                         </button>
                     </div>
@@ -983,12 +1096,11 @@
         </div>
     </div>
 
-    <!-- Stats Modal -->
     <div class="modal fade" id="statsModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
-                    <h5 class="modal-title"><i class="fas fa-chart-line me-2"></i>Statistics</h5>
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-chart-line me-2"></i>Statistics & Analytics</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="statsBody">
@@ -1002,11 +1114,90 @@
         </div>
     </div>
 
-    <!-- Settings Modal -->
+    <div class="modal fade" id="activityModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-history me-2"></i>Activity Log</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="activityBody">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="projectsModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-project-diagram me-2"></i>Projects</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="projectsBody">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary btn-sm" onclick="openAddProjectModal()">
+                        <i class="fas fa-plus"></i> New Project
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addProjectModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i>Add Project</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Project Name *</label>
+                        <input type="text" class="form-control" id="projectName">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="projectDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Color</label>
+                        <input type="color" class="form-control" id="projectColor" value="#6B46C1">
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="projectStartDate">
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="projectEndDate">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary btn-sm" onclick="createProject()">Create Project</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="settingsModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-cog me-2"></i>Settings</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -1024,12 +1215,30 @@
                         <input class="form-check-input" type="checkbox" id="emailNotifications">
                         <label class="form-check-label">Email Notifications</label>
                     </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="pushNotifications">
+                        <label class="form-check-label">Push Notifications</label>
+                    </div>
                     <hr>
-                    <h6>Theme</h6>
+                    <h6>Display Settings</h6>
                     <div class="mb-3">
+                        <label class="form-label">Theme</label>
                         <select class="form-select" id="themeSelect">
                             <option value="light">Light</option>
                             <option value="dark">Dark</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Timezone</label>
+                        <select class="form-select" id="timezoneSelect">
+                            <option value="UTC">UTC</option>
+                            <option value="America/New_York">Eastern Time</option>
+                            <option value="America/Chicago">Central Time</option>
+                            <option value="America/Denver">Mountain Time</option>
+                            <option value="America/Los_Angeles">Pacific Time</option>
+                            <option value="Europe/London">London</option>
+                            <option value="Europe/Paris">Paris</option>
+                            <option value="Asia/Tokyo">Tokyo</option>
                         </select>
                     </div>
                 </div>
@@ -1041,49 +1250,34 @@
         </div>
     </div>
 
-    <!-- Funnel Collapse Toggle Button (Mobile) -->
-    <div class="modal fade" id="funnelCollapseModal" tabindex="-1">
-        <div class="modal-dialog modal-fullscreen">
-            <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;">
-                    <h5 class="modal-title"><i class="fas fa-funnel-dollar me-2"></i>Task Funnel</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="funnelModalBody"></div>
-            </div>
-        </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
     <script>
+        // ============ GLOBAL VARIABLES ============
         const API_BASE = '';
         
         let calendar;
         let allTasks = [];
+        let allProjects = [];
         let currentTaskId = null;
         let currentFilter = 'all';
-        let taskModal = null;
-        let addTaskModal = null;
-        let settingsModal = null;
-        let schedulePopupModal = null;
-        let shareModal = null;
-        let exportModal = null;
-        let statsModal = null;
-        let logoutConfirmModal = null;
-        let successModal = null;
-        let errorModal = null;
-        let infoModal = null;
-        let warningModal = null;
-        let deleteConfirmModal = null;
-        let funnelCollapseModal = null;
-        let pendingScheduleTaskId = null;
-        let draggedTaskId = null;
-        let calendarInitialized = false;
+        let currentSearchTerm = '';
+        let currentPage = 1;
+        let itemsPerPage = 10;
+        let statsChart = null;
+        
+        // Modal instances
+        let taskModal, addTaskModal, settingsModal, schedulePopupModal, shareModal, exportModal;
+        let statsModal, activityModal, projectsModal, addProjectModal, logoutConfirmModal;
+        let successModal, errorModal, infoModal, warningModal, deleteConfirmModal;
+        
         let isAuthenticated = false;
         let refreshInterval = null;
-        let isFunnelCollapsed = false;
+        let draggedTaskId = null;
+        let calendarInitialized = false;
+        let pendingScheduleTaskId = null;
 
+        // ============ HELPER FUNCTIONS ============
         function log(msg, data) {
             if (window.console) {
                 if (data) console.log(msg, data);
@@ -1091,7 +1285,29 @@
             }
         }
 
-        // Modal Functions
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'Not set';
+            return new Date(dateString).toLocaleString();
+        }
+
+        function formatDateShort(dateString) {
+            if (!dateString) return '';
+            return new Date(dateString).toLocaleDateString();
+        }
+
+        function getSeverityColor(severity) {
+            const colors = { 'Critical': '#dc3545', 'High': '#fd7e14', 'Medium': '#ffc107', 'Low': '#28a745' };
+            return colors[severity] || '#6B46C1';
+        }
+
+        // ============ MODAL FUNCTIONS ============
         function showSuccessModal(message, details = '') {
             document.getElementById('successMessage').textContent = message;
             document.getElementById('successDetails').textContent = details || 'Action completed successfully';
@@ -1113,21 +1329,210 @@
             warningModal.show();
         }
 
-        function showLogoutConfirmation() {
-            logoutConfirmModal.show();
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.style.background = type === 'success' ? '#48bb78' : type === 'error' ? '#f56565' : '#4299e1';
+            toast.style.color = 'white';
+            toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} me-2"></i>${message}`;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slideOutDown 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ============ AUTHENTICATION ============
+        async function checkAuth() {
+            try {
+                log('Checking authentication...');
+                const response = await fetch(`${API_BASE}/api/check-session`, { 
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                
+                if (!response.ok) {
+                    log('Session check failed:', response.status);
+                    throw new Error('Session check failed');
+                }
+                
+                const data = await response.json();
+                log('Session check response:', data);
+                
+                if (data.authenticated) {
+                    isAuthenticated = true;
+                    const displayName = data.email || data.username;
+                    document.getElementById('userDisplay').innerHTML = `<i class="fas fa-user-circle me-1"></i> ${displayName}`;
+                    log('User authenticated:', displayName);
+                    return true;
+                } else {
+                    log('Not authenticated, redirecting to login');
+                    window.location.href = '/login.html';
+                    return false;
+                }
+            } catch (error) {
+                log('Auth error:', error);
+                window.location.href = '/login.html';
+                return false;
+            }
         }
 
         async function confirmLogout() {
             logoutConfirmModal.hide();
             if (refreshInterval) clearInterval(refreshInterval);
             try {
-                await fetch(`${API_BASE}/api/logout`, { method: 'POST', credentials: 'include' });
-                showSuccessModal('Logged Out', 'You have been successfully logged out. Redirecting to login page...');
-                setTimeout(() => {
-                    window.location.href = '/login.html';
-                }, 1500);
+                const response = await fetch(`${API_BASE}/api/logout`, { 
+                    method: 'POST', 
+                    credentials: 'include' 
+                });
+                if (response.ok) {
+                    showSuccessModal('Logged Out', 'Redirecting to login page...');
+                    setTimeout(() => {
+                        window.location.href = '/login.html';
+                    }, 1500);
+                } else {
+                    showErrorModal('Error logging out. Please try again.');
+                }
             } catch (error) {
                 showErrorModal('Error logging out. Please try again.');
+            }
+        }
+
+        function showLogoutConfirmation() {
+            logoutConfirmModal.show();
+        }
+
+        // ============ TASK MANAGEMENT ============
+        async function loadAllTasks() {
+            try {
+                log('Loading tasks...');
+                const response = await fetch(`${API_BASE}/api/tasks`, { 
+                    credentials: 'include',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        log('Unauthorized, redirecting to login');
+                        window.location.href = '/login.html';
+                        return;
+                    }
+                    throw new Error(`Failed to load tasks: ${response.status}`);
+                }
+                
+                allTasks = await response.json();
+                log(`Loaded ${allTasks.length} tasks`);
+                
+                updateFunnelStats();
+                renderFunnelTasks();
+                
+                if (calendar && calendarInitialized) {
+                    renderCalendarEvents();
+                }
+            } catch (error) {
+                log('Error loading tasks:', error);
+                showErrorModal('Error loading tasks. Please refresh the page.');
+            }
+        }
+
+        async function saveQuickTask() {
+            const placement = document.querySelector('input[name="taskPlacement"]:checked').value;
+            const task = {
+                title: document.getElementById('quickTaskTitle').value,
+                description: document.getElementById('quickTaskDesc').value,
+                project: document.getElementById('quickTaskProject').value,
+                category: document.getElementById('quickTaskCategory').value,
+                severity: document.getElementById('quickTaskSeverity').value,
+                priority: parseInt(document.getElementById('quickTaskPriority').value),
+                deadline: document.getElementById('quickTaskDeadline').value || null,
+                tags: document.getElementById('quickTaskTags').value,
+                is_recurring: document.getElementById('quickTaskRecurring').checked,
+                recurrence_pattern: document.getElementById('quickTaskRecurring').checked ? document.getElementById('quickTaskRecurrence').value : null,
+                recurrence_end_date: document.getElementById('quickTaskRecurring').checked && document.getElementById('quickTaskRecurrenceEnd').value ? 
+                    document.getElementById('quickTaskRecurrenceEnd').value : null
+            };
+            
+            if (placement === 'calendar') {
+                const startDate = document.getElementById('quickTaskStart').value;
+                const endDate = document.getElementById('quickTaskEnd').value;
+                if (startDate && endDate) {
+                    task.scheduled_start = new Date(startDate).toISOString();
+                    task.scheduled_end = new Date(endDate).toISOString();
+                } else {
+                    showWarningModal('Please select start and end times for the calendar task.');
+                    return;
+                }
+            }
+            
+            if (!task.title) {
+                showWarningModal('Please enter a task title.');
+                return;
+            }
+            
+            try {
+                log('Creating task:', task);
+                const response = await fetch(`${API_BASE}/api/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(task)
+                });
+                
+                if (response.ok) {
+                    addTaskModal.hide();
+                    document.getElementById('quickTaskForm').reset();
+                    await loadAllTasks();
+                    showSuccessModal('Task Added', 'Your task has been created successfully.');
+                } else {
+                    const error = await response.json();
+                    showErrorModal(error.error || 'Error adding task');
+                }
+            } catch (error) {
+                log('Error creating task:', error);
+                showErrorModal('Error adding task. Please try again.');
+            }
+        }
+
+        async function completeCurrentTask() {
+            if (currentTaskId) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/tasks/${currentTaskId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ completed: true })
+                    });
+                    
+                    if (response.ok) {
+                        await loadAllTasks();
+                        taskModal.hide();
+                        showSuccessModal('Task Completed! 🎉', 'Great job! Keep up the momentum.');
+                    } else {
+                        showErrorModal('Failed to complete task. Please try again.');
+                    }
+                } catch (error) {
+                    showErrorModal('Error completing task. Please try again.');
+                }
+            }
+        }
+
+        async function deleteTask(taskId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/tasks/${taskId}`, { 
+                    method: 'DELETE', 
+                    credentials: 'include' 
+                });
+                if (response.ok) {
+                    await loadAllTasks();
+                    if (taskModal) taskModal.hide();
+                    showSuccessModal('Task Deleted', 'The task has been successfully deleted.');
+                    currentTaskId = null;
+                } else {
+                    showErrorModal('Failed to delete task. Please try again.');
+                }
+            } catch (error) {
+                showErrorModal('Error deleting task. Please try again.');
             }
         }
 
@@ -1147,323 +1552,66 @@
             }
         }
 
-        async function confirmDeleteTask() {
+        document.getElementById('confirmDeleteBtn').onclick = async () => {
             if (currentTaskId) {
-                try {
-                    const response = await fetch(`${API_BASE}/api/tasks/${currentTaskId}`, { method: 'DELETE', credentials: 'include' });
-                    if (response.ok) {
-                        await loadAllTasks();
-                        if (taskModal) taskModal.hide();
-                        showSuccessModal('Task Deleted', 'The task has been successfully deleted.');
-                        currentTaskId = null;
-                    } else {
-                        showErrorModal('Failed to delete task. Please try again.');
-                    }
-                } catch (error) {
-                    showErrorModal('Error deleting task. Please try again.');
-                }
+                await deleteTask(currentTaskId);
+                deleteConfirmModal.hide();
             }
-            deleteConfirmModal.hide();
-        }
+        };
 
-        // Initialize everything when page loads
-        document.addEventListener('DOMContentLoaded', async function() {
-            log('Dashboard loading...');
-            
-            // Initialize modals
-            taskModal = new bootstrap.Modal(document.getElementById('taskModal'));
-            addTaskModal = new bootstrap.Modal(document.getElementById('addTaskModal'));
-            settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
-            schedulePopupModal = new bootstrap.Modal(document.getElementById('schedulePopupModal'));
-            shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
-            exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
-            statsModal = new bootstrap.Modal(document.getElementById('statsModal'));
-            logoutConfirmModal = new bootstrap.Modal(document.getElementById('logoutConfirmModal'));
-            successModal = new bootstrap.Modal(document.getElementById('successModal'));
-            errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
-            infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
-            warningModal = new bootstrap.Modal(document.getElementById('warningModal'));
-            deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-            funnelCollapseModal = new bootstrap.Modal(document.getElementById('funnelCollapseModal'));
-            
-            document.getElementById('confirmDeleteBtn').onclick = confirmDeleteTask;
-            
-            const authResult = await checkAuth();
-            if (authResult) {
-                document.getElementById('mainContent').style.display = 'block';
-                document.getElementById('loadingSpinner').style.display = 'none';
-                
-                initCalendar();
-                await loadAllTasks();
-                await loadSettings();
-                await loadStats();
-                initFilters();
-                initRecurringToggle();
-                initPlacementToggle();
-                initCalendarViewButtons();
-                
-                // Refresh every 30 seconds
-                refreshInterval = setInterval(async function() {
-                    if (isAuthenticated && document.hasFocus()) {
-                        await loadAllTasks();
-                    }
-                }, 30000);
-            }
-        });
-
-        async function checkAuth() {
-            try {
-                const response = await fetch(`${API_BASE}/api/check-session`, { 
-                    method: 'GET',
-                    credentials: 'include',
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
-                
-                if (!response.ok) throw new Error('Session check failed');
-                
-                const data = await response.json();
-                log('Session check:', data);
-                
-                if (data.authenticated) {
-                    isAuthenticated = true;
-                    const displayName = data.email || data.username;
-                    document.getElementById('userDisplay').innerHTML = `<i class="fas fa-user-circle me-1"></i> ${displayName}`;
-                    log('User authenticated:', displayName);
-                    return true;
-                } else {
-                    window.location.href = '/login.html';
-                    return false;
-                }
-            } catch (error) {
-                log('Auth error:', error);
-                window.location.href = '/login.html';
-                return false;
-            }
-        }
-
-        async function loadSettings() {
-            try {
-                const response = await fetch(`${API_BASE}/api/settings`, { 
-                    credentials: 'include',
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    document.getElementById('reminderInterval').value = data.reminder_interval || 20;
-                    document.getElementById('autoReminders').checked = data.auto_reminders || false;
-                    document.getElementById('emailNotifications').checked = data.email_notifications !== false;
-                    document.getElementById('themeSelect').value = data.theme || 'light';
-                    applyTheme(data.theme || 'light');
-                }
-            } catch (error) {
-                log('Error loading settings:', error);
-            }
-        }
-
-        async function saveSettings() {
-            const settings = {
-                reminder_interval: parseInt(document.getElementById('reminderInterval').value),
-                auto_reminders: document.getElementById('autoReminders').checked,
-                email_notifications: document.getElementById('emailNotifications').checked,
-                theme: document.getElementById('themeSelect').value
-            };
-            
-            try {
-                const response = await fetch(`${API_BASE}/api/settings`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify(settings)
-                });
-                if (response.ok) {
-                    applyTheme(settings.theme);
-                    showSuccessModal('Settings Saved', 'Your preferences have been updated successfully.');
-                    settingsModal.hide();
-                } else {
-                    showErrorModal('Failed to save settings. Please try again.');
-                }
-            } catch (error) {
-                showErrorModal('Error saving settings. Please try again.');
-            }
-        }
-
-        function applyTheme(theme) {
-            if (theme === 'dark') {
-                document.body.style.background = 'linear-gradient(135deg, #1a202c 0%, #2d3748 100%)';
-                document.querySelectorAll('.glass-card, .funnel-container, .calendar-container').forEach(el => {
-                    el.style.background = 'rgba(26, 32, 44, 0.95)';
-                    el.style.color = '#f7fafc';
-                });
-            } else {
-                document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-                document.querySelectorAll('.glass-card, .funnel-container, .calendar-container').forEach(el => {
-                    el.style.background = 'rgba(255, 255, 255, 0.95)';
-                    el.style.color = '#1a202c';
-                });
-            }
-        }
-
-        async function loadStats() {
-            try {
-                const response = await fetch(`${API_BASE}/api/user-stats`, { credentials: 'include' });
-                if (response.ok) {
-                    window.userStats = await response.json();
-                }
-            } catch (error) {
-                log('Error loading stats:', error);
-            }
-        }
-
-        async function viewStats() {
-            if (!window.userStats) await loadStats();
-            const stats = window.userStats || {};
-            document.getElementById('statsBody').innerHTML = `
-                <div class="row g-2">
-                    <div class="col-6 col-md-4 mb-2">
-                        <div class="stats-card p-2 text-center">
-                            <i class="fas fa-check-circle fa-2x mb-1"></i>
-                            <div class="stats-number fs-3">${stats.completed_tasks || 0}</div>
-                            <div class="small">Completed</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-4 mb-2">
-                        <div class="stats-card p-2 text-center" style="background: linear-gradient(135deg, #48bb78, #38a169);">
-                            <i class="fas fa-calendar-check fa-2x mb-1"></i>
-                            <div class="stats-number fs-3">${stats.scheduled_tasks || 0}</div>
-                            <div class="small">Scheduled</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-4 mb-2">
-                        <div class="stats-card p-2 text-center" style="background: linear-gradient(135deg, #f6ad55, #ed8936);">
-                            <i class="fas fa-hourglass-half fa-2x mb-1"></i>
-                            <div class="stats-number fs-3">${stats.unscheduled_tasks || 0}</div>
-                            <div class="small">Unscheduled</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-4 mb-2">
-                        <div class="stats-card p-2 text-center" style="background: linear-gradient(135deg, #f56565, #e53e3e);">
-                            <i class="fas fa-exclamation-triangle fa-2x mb-1"></i>
-                            <div class="stats-number fs-3">${stats.critical_tasks || 0}</div>
-                            <div class="small">Critical</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-4 mb-2">
-                        <div class="stats-card p-2 text-center" style="background: linear-gradient(135deg, #9f7aea, #805ad5);">
-                            <i class="fas fa-chart-line fa-2x mb-1"></i>
-                            <div class="stats-number fs-3">${stats.high_priority_tasks || 0}</div>
-                            <div class="small">High Priority</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-4 mb-2">
-                        <div class="stats-card p-2 text-center" style="background: linear-gradient(135deg, #ed64a6, #d53f8c);">
-                            <i class="fas fa-clock fa-2x mb-1"></i>
-                            <div class="stats-number fs-3">${stats.tasks_this_week || 0}</div>
-                            <div class="small">This Week</div>
-                        </div>
-                    </div>
-                </div>
-                ${stats.overdue_tasks > 0 ? `<div class="alert alert-danger mt-3 mb-0 small"><i class="fas fa-bell"></i> ${stats.overdue_tasks} overdue task(s)!</div>` : ''}
-            `;
-            statsModal.show();
-        }
-
-        async function loadAllTasks() {
-            try {
-                const response = await fetch(`${API_BASE}/api/tasks`, { 
-                    credentials: 'include',
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
-                
-                if (!response.ok) {
-                    if (response.status === 401) {
-                        window.location.href = '/login.html';
-                        return;
-                    }
-                    throw new Error('Failed to load tasks');
-                }
-                
-                allTasks = await response.json();
-                log('Loaded tasks:', allTasks.length);
-                
-                renderFunnelTasks();
-                updateFunnelStats();
-                
-                if (calendar && calendarInitialized) {
-                    renderCalendarEvents();
-                }
-            } catch (error) {
-                log('Error loading tasks:', error);
-                showErrorModal('Error loading tasks. Please refresh the page.');
-            }
-        }
-
+        // ============ FUNNEL RENDERING ============
         function updateFunnelStats() {
             const unscheduledTasks = allTasks.filter(task => {
-                const hasNoSchedule = !task.scheduled_start || 
-                                     task.scheduled_start === '' || 
-                                     task.scheduled_start === null ||
-                                     task.scheduled_start === 'null';
+                const hasNoSchedule = !task.scheduled_start || task.scheduled_start === '' || task.scheduled_start === null;
                 const isNotCompleted = task.completed !== 1;
                 return hasNoSchedule && isNotCompleted;
             });
             document.getElementById('funnelStats').textContent = `${unscheduledTasks.length} task${unscheduledTasks.length !== 1 ? 's' : ''}`;
         }
 
-        function toggleFunnelCollapse() {
-            const content = document.getElementById('funnelContent');
-            const btn = document.getElementById('collapseFunnelBtn');
+        function filterTasks() {
+            currentSearchTerm = document.getElementById('taskSearchInput').value.toLowerCase();
+            currentPage = 1;
+            renderFunnelTasks();
+        }
+
+        function getFilteredUnscheduledTasks() {
+            let unscheduledTasks = allTasks.filter(task => {
+                const hasNoSchedule = !task.scheduled_start || task.scheduled_start === '' || task.scheduled_start === null;
+                const isNotCompleted = task.completed !== 1;
+                return hasNoSchedule && isNotCompleted;
+            });
             
-            if (window.innerWidth < 768) {
-                // On mobile, show fullscreen modal
-                const modalBody = document.getElementById('funnelModalBody');
-                modalBody.innerHTML = document.getElementById('funnelContent').cloneNode(true).innerHTML;
-                funnelCollapseModal.show();
-                
-                // Reattach event listeners for the modal content
-                setTimeout(() => {
-                    document.querySelectorAll('#funnelModalBody .filter-btn').forEach(btn => {
-                        btn.onclick = () => {
-                            document.querySelectorAll('#funnelModalBody .filter-btn').forEach(b => b.classList.remove('active'));
-                            btn.classList.add('active');
-                            currentFilter = btn.dataset.filter;
-                            renderFunnelTasks();
-                            funnelCollapseModal.hide();
-                        };
-                    });
-                }, 100);
-            } else {
-                // On desktop, toggle collapse
-                if (content.style.maxHeight) {
-                    content.style.maxHeight = null;
-                    btn.innerHTML = '<i class="fas fa-chevron-down"></i>';
-                } else {
-                    content.style.maxHeight = '300px';
-                    btn.innerHTML = '<i class="fas fa-chevron-up"></i>';
-                }
+            if (currentFilter !== 'all') {
+                unscheduledTasks = unscheduledTasks.filter(task => 
+                    task.severity === currentFilter || task.category === currentFilter
+                );
             }
+            
+            if (currentSearchTerm) {
+                unscheduledTasks = unscheduledTasks.filter(task => 
+                    task.title.toLowerCase().includes(currentSearchTerm) ||
+                    (task.description && task.description.toLowerCase().includes(currentSearchTerm)) ||
+                    (task.project && task.project.toLowerCase().includes(currentSearchTerm))
+                );
+            }
+            
+            const severityOrder = { 'Critical': 1, 'High': 2, 'Medium': 3, 'Low': 4 };
+            unscheduledTasks.sort((a, b) => (severityOrder[a.severity] || 5) - (severityOrder[b.severity] || 5));
+            
+            return unscheduledTasks;
         }
 
         function renderFunnelTasks() {
             const container = document.getElementById('funnelTasksList');
             if (!container) return;
             
-            const unscheduledTasks = allTasks.filter(task => {
-                const hasNoSchedule = !task.scheduled_start || 
-                                     task.scheduled_start === '' || 
-                                     task.scheduled_start === null ||
-                                     task.scheduled_start === 'null';
-                const isNotCompleted = task.completed !== 1;
-                return hasNoSchedule && isNotCompleted;
-            });
+            const filteredTasks = getFilteredUnscheduledTasks();
+            const totalPages = Math.ceil(filteredTasks.length / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const paginatedTasks = filteredTasks.slice(startIndex, startIndex + itemsPerPage);
             
-            let filteredTasks = unscheduledTasks;
-            if (currentFilter !== 'all') {
-                filteredTasks = unscheduledTasks.filter(task => 
-                    task.severity === currentFilter || task.category === currentFilter
-                );
-            }
-            
-            if (filteredTasks.length === 0) {
+            if (paginatedTasks.length === 0) {
                 container.innerHTML = `<div class="empty-funnel">
                     <i class="fas fa-check-circle"></i>
                     <p class="mb-2">No tasks in funnel</p>
@@ -1471,10 +1619,11 @@
                         <i class="fas fa-plus"></i> Add Task
                     </button>
                 </div>`;
+                document.getElementById('funnelPagination').innerHTML = '';
                 return;
             }
             
-            container.innerHTML = filteredTasks.map(task => `
+            container.innerHTML = paginatedTasks.map(task => `
                 <div class="task-card task-${task.severity.toLowerCase()}" data-task-id="${task.id}" draggable="true">
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div class="task-title flex-grow-1" onclick="showTaskModalById(${task.id})">${escapeHtml(task.title)}</div>
@@ -1482,8 +1631,8 @@
                             <button class="btn btn-sm btn-outline-primary p-1" onclick="event.stopPropagation(); openSchedulePopupForTask(${task.id})" style="border-radius: 50%; width: 28px; height: 28px;">
                                 <i class="fas fa-calendar-alt fa-xs"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-info p-1" onclick="event.stopPropagation(); shareSingleTask(${task.id})" style="border-radius: 50%; width: 28px; height: 28px;">
-                                <i class="fas fa-share fa-xs"></i>
+                            <button class="btn btn-sm btn-outline-danger p-1" onclick="event.stopPropagation(); showDeleteConfirmation(${task.id}, '${escapeHtml(task.title).replace(/'/g, "\\'")}')" style="border-radius: 50%; width: 28px; height: 28px;">
+                                <i class="fas fa-trash fa-xs"></i>
                             </button>
                         </div>
                     </div>
@@ -1491,13 +1640,39 @@
                         <small class="text-muted"><i class="fas fa-folder-open"></i> ${escapeHtml(task.project) || 'No project'}</small>
                         <span class="severity-${task.severity}">${task.severity}</span>
                     </div>
-                    ${task.deadline ? `<small class="text-muted d-block mt-1"><i class="fas fa-clock"></i> Due: ${formatDate(task.deadline)}</small>` : ''}
+                    ${task.deadline ? `<small class="text-muted d-block mt-1"><i class="fas fa-clock"></i> Due: ${formatDateShort(task.deadline)}</small>` : ''}
                 </div>
             `).join('');
+            
+            if (totalPages > 1) {
+                let paginationHtml = `<button class="pagination-btn" onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}><i class="fas fa-chevron-left"></i></button>`;
+                
+                for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+                    paginationHtml += `<button class="pagination-btn ${currentPage === i ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+                }
+                
+                if (totalPages > 5) {
+                    paginationHtml += `<span class="px-2">...</span>`;
+                    paginationHtml += `<button class="pagination-btn" onclick="changePage(${totalPages})">${totalPages}</button>`;
+                }
+                
+                paginationHtml += `<button class="pagination-btn" onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}><i class="fas fa-chevron-right"></i></button>`;
+                paginationHtml += `<span class="ms-2 small text-muted">${filteredTasks.length} total</span>`;
+                
+                document.getElementById('funnelPagination').innerHTML = paginationHtml;
+            } else {
+                document.getElementById('funnelPagination').innerHTML = '';
+            }
             
             setupDragAndDrop();
         }
 
+        function changePage(page) {
+            currentPage = page;
+            renderFunnelTasks();
+        }
+
+        // ============ DRAG AND DROP ============
         function setupDragAndDrop() {
             const taskCards = document.querySelectorAll('.task-card');
             taskCards.forEach(card => {
@@ -1525,19 +1700,19 @@
             draggedTaskId = null;
         }
 
+        // ============ CALENDAR ============
         function renderCalendarEvents() {
             if (!calendar) return;
             
             calendar.removeAllEvents();
             
             const scheduledTasks = allTasks.filter(task => {
-                const hasSchedule = task.scheduled_start && 
-                                   task.scheduled_start !== '' && 
-                                   task.scheduled_start !== null &&
-                                   task.scheduled_start !== 'null';
+                const hasSchedule = task.scheduled_start && task.scheduled_start !== '' && task.scheduled_start !== null;
                 const isNotCompleted = task.completed !== 1;
                 return hasSchedule && isNotCompleted;
             });
+            
+            log('Rendering calendar events:', scheduledTasks.length);
             
             scheduledTasks.forEach(task => {
                 let startDate = new Date(task.scheduled_start);
@@ -1560,7 +1735,10 @@
 
         function initCalendar() {
             const calendarEl = document.getElementById('calendar');
-            if (!calendarEl) return;
+            if (!calendarEl) {
+                log('Calendar element not found');
+                return;
+            }
             
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: window.innerWidth < 768 ? 'timeGridDay' : 'timeGridWeek',
@@ -1597,26 +1775,7 @@
             
             calendar.render();
             calendarInitialized = true;
-        }
-
-        function initCalendarViewButtons() {
-            const buttons = document.querySelectorAll('.view-btn');
-            buttons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    buttons.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    const view = btn.dataset.view;
-                    if (calendar) {
-                        calendar.changeView(view);
-                        // Adjust for mobile
-                        if (view === 'timeGridDay' && window.innerWidth < 768) {
-                            // Day view works well on mobile
-                        } else if (view === 'timeGridWeek' && window.innerWidth < 768) {
-                            // Week view is also usable
-                        }
-                    }
-                });
-            });
+            log('Calendar initialized');
         }
 
         async function scheduleTaskAtTime(taskId, dateTime) {
@@ -1656,7 +1815,6 @@
                 
                 if (response.ok) {
                     await loadAllTasks();
-                    showSuccessModal('Task Updated', startDate ? 'Task has been rescheduled.' : 'Task moved to funnel.');
                 } else {
                     showErrorModal('Failed to update task schedule.');
                 }
@@ -1666,106 +1824,116 @@
             }
         }
 
-        async function saveQuickTask() {
-            const placement = document.querySelector('input[name="taskPlacement"]:checked').value;
-            const task = {
-                title: document.getElementById('quickTaskTitle').value,
-                description: document.getElementById('quickTaskDesc').value,
-                project: document.getElementById('quickTaskProject').value,
-                category: document.getElementById('quickTaskCategory').value,
-                severity: document.getElementById('quickTaskSeverity').value,
-                deadline: document.getElementById('quickTaskDeadline').value || null,
-                is_recurring: document.getElementById('quickTaskRecurring').checked,
-                recurrence_pattern: document.getElementById('quickTaskRecurring').checked ? document.getElementById('quickTaskRecurrence').value : null
+        function initCalendarViewButtons() {
+            const buttons = document.querySelectorAll('.view-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    buttons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const view = btn.dataset.view;
+                    if (calendar) {
+                        calendar.changeView(view);
+                    }
+                });
+            });
+        }
+
+        // ============ PROJECT MANAGEMENT ============
+        async function loadProjects() {
+            try {
+                const response = await fetch(`${API_BASE}/api/projects`, { credentials: 'include' });
+                if (response.ok) {
+                    allProjects = await response.json();
+                    renderProjectsModal();
+                }
+            } catch (error) {
+                log('Error loading projects:', error);
+            }
+        }
+
+        async function createProject() {
+            const project = {
+                name: document.getElementById('projectName').value,
+                description: document.getElementById('projectDescription').value,
+                color: document.getElementById('projectColor').value,
+                start_date: document.getElementById('projectStartDate').value,
+                end_date: document.getElementById('projectEndDate').value
             };
             
-            if (placement === 'calendar') {
-                const startDate = document.getElementById('quickTaskStart').value;
-                const endDate = document.getElementById('quickTaskEnd').value;
-                if (startDate && endDate) {
-                    task.scheduled_start = new Date(startDate).toISOString();
-                    task.scheduled_end = new Date(endDate).toISOString();
-                } else {
-                    showWarningModal('Please select start and end times for the calendar task.');
-                    return;
-                }
-            }
-            
-            if (!task.title) {
-                showWarningModal('Please enter a task title.');
+            if (!project.name) {
+                showWarningModal('Please enter a project name.');
                 return;
             }
             
             try {
-                const response = await fetch(`${API_BASE}/api/tasks`, {
+                const response = await fetch(`${API_BASE}/api/projects`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify(task)
+                    body: JSON.stringify(project)
                 });
                 
                 if (response.ok) {
-                    addTaskModal.hide();
-                    document.getElementById('quickTaskForm').reset();
-                    await loadAllTasks();
-                    showSuccessModal('Task Added', 'Your task has been created successfully.');
+                    await loadProjects();
+                    addProjectModal.hide();
+                    showSuccessModal('Project Created', `${project.name} has been created.`);
+                    document.getElementById('projectName').value = '';
+                    document.getElementById('projectDescription').value = '';
                 } else {
-                    const error = await response.json();
-                    showErrorModal(error.error || 'Error adding task');
+                    showErrorModal('Failed to create project.');
                 }
             } catch (error) {
-                showErrorModal('Error adding task. Please try again.');
+                showErrorModal('Error creating project.');
             }
         }
 
-        async function completeCurrentTask() {
-            if (currentTaskId) {
-                try {
-                    const response = await fetch(`${API_BASE}/api/tasks/${currentTaskId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ completed: true })
-                    });
-                    
-                    if (response.ok) {
-                        await loadAllTasks();
-                        taskModal.hide();
-                        showSuccessModal('Task Completed! 🎉', 'Great job! Keep up the momentum.');
-                    } else {
-                        showErrorModal('Failed to complete task. Please try again.');
-                    }
-                } catch (error) {
-                    showErrorModal('Error completing task. Please try again.');
-                }
+        function renderProjectsModal() {
+            const container = document.getElementById('projectsBody');
+            if (!container) return;
+            
+            if (!allProjects || allProjects.length === 0) {
+                container.innerHTML = `<div class="text-center py-4">
+                    <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                    <p>No projects yet. Create your first project!</p>
+                </div>`;
+                return;
             }
+            
+            container.innerHTML = allProjects.map(project => `
+                <div class="project-card" onclick="filterByProject('${escapeHtml(project.name)}')">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-folder" style="color: ${project.color || '#6B46C1'};"></i>
+                            <strong>${escapeHtml(project.name)}</strong>
+                        </div>
+                        <small class="text-muted">${project.status || 'active'}</small>
+                    </div>
+                    ${project.description ? `<small class="text-muted d-block mt-1">${escapeHtml(project.description)}</small>` : ''}
+                    <div class="project-progress mt-2">
+                        <div class="project-progress-bar" style="width: ${project.progress || 0}%; background: ${project.color || '#6B46C1'};"></div>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <small>${project.progress || 0}% complete</small>
+                        <small>${formatDateShort(project.start_date)} - ${formatDateShort(project.end_date)}</small>
+                    </div>
+                </div>
+            `).join('');
         }
 
-        function showTaskModalById(taskId) {
-            const task = allTasks.find(t => t.id === taskId);
-            if (!task) return;
-            currentTaskId = task.id;
-            document.getElementById('taskModalTitle').textContent = task.title;
-            document.getElementById('taskModalBody').innerHTML = `
-                <div class="row g-2 mb-2">
-                    <div class="col-12"><strong>Description</strong><p class="mb-1">${escapeHtml(task.description) || 'No description'}</p></div>
-                    <div class="col-6"><strong>Project</strong><p>${escapeHtml(task.project) || 'No project'}</p></div>
-                    <div class="col-6"><strong>Category</strong><p>${escapeHtml(task.category) || 'No category'}</p></div>
-                    <div class="col-6"><strong>Severity</strong><p><span class="severity-${task.severity}">${task.severity}</span></p></div>
-                    <div class="col-6"><strong>Status</strong><p>${task.completed ? '<span class="badge bg-success">Completed</span>' : '<span class="badge bg-warning">Pending</span>'}</p></div>
-                </div>
-                ${task.deadline ? `<div class="mb-2"><strong>Deadline</strong><p>${formatDate(task.deadline)}</p></div>` : ''}
-                ${task.scheduled_start ? `<div class="mb-2"><strong>Scheduled</strong><p>${formatDate(task.scheduled_start)} - ${formatDate(task.scheduled_end)}</p></div>` : '<div class="alert alert-info py-2 small">This task is in the funnel. Drag to calendar to schedule.</div>'}
-                ${task.is_recurring ? `<div class="mb-2"><strong>Recurring</strong><p>${task.recurrence_pattern}</p></div>` : ''}
-                <div class="mt-2">
-                    <button class="btn btn-sm btn-outline-primary w-100" onclick="shareSingleTask(${task.id})"><i class="fas fa-share-alt"></i> Share this task</button>
-                </div>
-            `;
-            taskModal.show();
+        function filterByProject(projectName) {
+            currentFilter = projectName;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            currentPage = 1;
+            renderFunnelTasks();
+            projectsModal.hide();
+            showInfoModal(`Showing tasks for project: ${projectName}`);
         }
 
+        // ============ SHARING AND EXPORT ============
         async function shareSchedule() {
             const shareEmail = document.getElementById('shareEmail').value;
+            const shareFormat = document.getElementById('shareFormat').value;
+            
             if (!shareEmail) {
                 showWarningModal('Please enter an email address to share with.');
                 return;
@@ -1776,7 +1944,11 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ shareWithEmail: shareEmail, shareType: 'view' })
+                    body: JSON.stringify({ 
+                        shareWithEmail: shareEmail, 
+                        shareType: 'view',
+                        format: shareFormat
+                    })
                 });
                 
                 if (response.ok) {
@@ -1792,31 +1964,6 @@
             }
         }
 
-        async function shareSingleTask(taskId) {
-            const task = allTasks.find(t => t.id === taskId);
-            if (!task) return;
-            
-            const shareEmail = prompt(`Share "${task.title}" with (email):`);
-            if (shareEmail) {
-                try {
-                    const response = await fetch(`${API_BASE}/api/share-schedule`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ shareWithEmail: shareEmail, shareType: 'view' })
-                    });
-                    
-                    if (response.ok) {
-                        showSuccessModal('Task Shared!', `Task has been shared with ${shareEmail}.`);
-                    } else {
-                        showErrorModal('Error sharing task. Please try again.');
-                    }
-                } catch (error) {
-                    showErrorModal('Error sharing task. Please try again.');
-                }
-            }
-        }
-
         async function exportSchedule(format) {
             try {
                 const response = await fetch(`${API_BASE}/api/export-schedule?format=${format}`, {
@@ -1829,7 +1976,11 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `taskweaver_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : format}`;
+                    let extension = format;
+                    if (format === 'excel') extension = 'xlsx';
+                    if (format === 'word') extension = 'doc';
+                    if (format === 'ical') extension = 'ics';
+                    a.download = `taskweaver_${new Date().toISOString().split('T')[0]}.${extension}`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -1842,6 +1993,227 @@
             } catch (error) {
                 showErrorModal('Error exporting schedule. Please try again.');
             }
+        }
+
+        // ============ STATISTICS ============
+        async function viewStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/user-stats`, { credentials: 'include' });
+                const stats = await response.json();
+                
+                const totalTasks = allTasks.length;
+                const completedTasks = allTasks.filter(t => t.completed === 1).length;
+                const pendingTasks = totalTasks - completedTasks;
+                
+                const severityCounts = {
+                    Critical: allTasks.filter(t => t.severity === 'Critical').length,
+                    High: allTasks.filter(t => t.severity === 'High').length,
+                    Medium: allTasks.filter(t => t.severity === 'Medium').length,
+                    Low: allTasks.filter(t => t.severity === 'Low').length
+                };
+                
+                document.getElementById('statsBody').innerHTML = `
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="stats-card">
+                                <i class="fas fa-tasks fa-2x mb-2"></i>
+                                <div class="stats-number">${totalTasks}</div>
+                                <div>Total Tasks</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="stats-card" style="background: linear-gradient(135deg, #48bb78, #38a169);">
+                                <i class="fas fa-check-circle fa-2x mb-2"></i>
+                                <div class="stats-number">${completedTasks}</div>
+                                <div>Completed</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="stats-card" style="background: linear-gradient(135deg, #ed8936, #dd6b20);">
+                                <i class="fas fa-hourglass-half fa-2x mb-2"></i>
+                                <div class="stats-number">${pendingTasks}</div>
+                                <div>Pending</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="stats-card" style="background: linear-gradient(135deg, #f56565, #e53e3e);">
+                                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                                <div class="stats-number">${stats.critical_tasks || 0}</div>
+                                <div>Critical Tasks</div>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <h6>Task Distribution by Severity</h6>
+                    <canvas id="severityChart" height="200"></canvas>
+                    ${stats.overdue_tasks > 0 ? `<div class="alert alert-danger mt-3"><i class="fas fa-bell"></i> You have ${stats.overdue_tasks} overdue task(s)!</div>` : ''}
+                `;
+                
+                statsModal.show();
+                
+                setTimeout(() => {
+                    const ctx = document.getElementById('severityChart').getContext('2d');
+                    if (statsChart) statsChart.destroy();
+                    statsChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Critical', 'High', 'Medium', 'Low'],
+                            datasets: [{
+                                data: [severityCounts.Critical, severityCounts.High, severityCounts.Medium, severityCounts.Low],
+                                backgroundColor: ['#dc3545', '#fd7e14', '#ffc107', '#28a745']
+                            }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: true }
+                    });
+                }, 100);
+            } catch (error) {
+                showErrorModal('Error loading statistics.');
+            }
+        }
+
+        // ============ ACTIVITY LOG ============
+        async function viewActivity() {
+            try {
+                const response = await fetch(`${API_BASE}/api/activity`, { credentials: 'include' });
+                const activities = await response.json();
+                
+                if (!activities || activities.length === 0) {
+                    document.getElementById('activityBody').innerHTML = `
+                        <div class="text-center py-4">
+                            <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                            <p>No activity recorded yet.</p>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('activityBody').innerHTML = activities.slice(0, 50).map(activity => `
+                        <div class="activity-item">
+                            <div class="d-flex justify-content-between">
+                                <strong>${escapeHtml(activity.action)}</strong>
+                                <span class="activity-time">${formatDate(activity.created_at)}</span>
+                            </div>
+                            <div class="small text-muted">${escapeHtml(activity.details) || ''}</div>
+                            <div class="small text-muted">IP: ${activity.ip_address || 'Unknown'}</div>
+                        </div>
+                    `).join('');
+                }
+                
+                activityModal.show();
+            } catch (error) {
+                showErrorModal('Error loading activity log.');
+            }
+        }
+
+        // ============ SETTINGS ============
+        async function loadSettings() {
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`, { 
+                    credentials: 'include',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('reminderInterval').value = data.reminder_interval || 20;
+                    document.getElementById('autoReminders').checked = data.auto_reminders || false;
+                    document.getElementById('emailNotifications').checked = data.email_notifications !== false;
+                    document.getElementById('pushNotifications').checked = data.push_notifications || false;
+                    document.getElementById('themeSelect').value = data.theme || 'light';
+                    document.getElementById('timezoneSelect').value = data.timezone || 'UTC';
+                    applyTheme(data.theme || 'light');
+                }
+            } catch (error) {
+                log('Error loading settings:', error);
+            }
+        }
+
+        async function saveSettings() {
+            const settings = {
+                reminder_interval: parseInt(document.getElementById('reminderInterval').value),
+                auto_reminders: document.getElementById('autoReminders').checked,
+                email_notifications: document.getElementById('emailNotifications').checked,
+                push_notifications: document.getElementById('pushNotifications').checked,
+                theme: document.getElementById('themeSelect').value,
+                timezone: document.getElementById('timezoneSelect').value
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(settings)
+                });
+                if (response.ok) {
+                    applyTheme(settings.theme);
+                    showSuccessModal('Settings Saved', 'Your preferences have been updated successfully.');
+                    settingsModal.hide();
+                } else {
+                    showErrorModal('Failed to save settings. Please try again.');
+                }
+            } catch (error) {
+                showErrorModal('Error saving settings. Please try again.');
+            }
+        }
+
+        function applyTheme(theme) {
+            if (theme === 'dark') {
+                document.body.style.background = 'linear-gradient(135deg, #1a202c 0%, #2d3748 100%)';
+                document.querySelectorAll('.glass-card, .funnel-container, .calendar-container').forEach(el => {
+                    el.style.background = 'rgba(26, 32, 44, 0.95)';
+                    el.style.color = '#f7fafc';
+                });
+            } else {
+                document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                document.querySelectorAll('.glass-card, .funnel-container, .calendar-container').forEach(el => {
+                    el.style.background = 'rgba(255, 255, 255, 0.95)';
+                    el.style.color = '#1a202c';
+                });
+            }
+        }
+
+        // ============ MODAL OPEN FUNCTIONS ============
+        function showTaskModalById(taskId) {
+            const task = allTasks.find(t => t.id === taskId);
+            if (!task) return;
+            currentTaskId = task.id;
+            document.getElementById('taskModalTitle').textContent = task.title;
+            document.getElementById('taskModalBody').innerHTML = `
+                <div class="row g-2 mb-2">
+                    <div class="col-12"><strong>Description</strong><p class="mb-1">${escapeHtml(task.description) || 'No description'}</p></div>
+                    <div class="col-6"><strong>Project</strong><p>${escapeHtml(task.project) || 'No project'}</p></div>
+                    <div class="col-6"><strong>Category</strong><p>${escapeHtml(task.category) || 'No category'}</p></div>
+                    <div class="col-6"><strong>Severity</strong><p><span class="severity-${task.severity}">${task.severity}</span></p></div>
+                    <div class="col-6"><strong>Priority</strong><p>${task.priority || 2}/5</p></div>
+                    <div class="col-6"><strong>Status</strong><p>${task.completed ? '<span class="badge bg-success">Completed</span>' : '<span class="badge bg-warning">Pending</span>'}</p></div>
+                    ${task.tags ? `<div class="col-12"><strong>Tags</strong><p>${escapeHtml(task.tags)}</p></div>` : ''}
+                </div>
+                ${task.deadline ? `<div class="mb-2"><strong>Deadline</strong><p>${formatDate(task.deadline)}</p></div>` : ''}
+                ${task.scheduled_start ? `<div class="mb-2"><strong>Scheduled</strong><p>${formatDate(task.scheduled_start)} - ${formatDate(task.scheduled_end)}</p></div>` : '<div class="alert alert-info py-2 small">This task is in the funnel. Drag to calendar to schedule.</div>'}
+                ${task.is_recurring ? `<div class="mb-2"><strong>Recurring</strong><p>${task.recurrence_pattern}${task.recurrence_end_date ? ` until ${formatDateShort(task.recurrence_end_date)}` : ''}</p></div>` : ''}
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary w-100" onclick="shareSingleTask(${task.id})"><i class="fas fa-share-alt"></i> Share this task</button>
+                </div>
+            `;
+            taskModal.show();
+        }
+
+        function openQuickAddModal() {
+            document.getElementById('quickTaskForm').reset();
+            document.getElementById('calendarScheduleOptions').style.display = 'none';
+            document.getElementById('recurringOptions').style.display = 'none';
+            document.querySelector('input[value="funnel"]').checked = true;
+            addTaskModal.show();
+        }
+
+        function openAddTaskAtTimeModal(dateTime) {
+            document.getElementById('quickTaskForm').reset();
+            const formattedDate = dateTime.toISOString().slice(0, 16);
+            document.getElementById('quickTaskStart').value = formattedDate;
+            const endDate = new Date(dateTime);
+            endDate.setHours(endDate.getHours() + 1);
+            document.getElementById('quickTaskEnd').value = endDate.toISOString().slice(0, 16);
+            document.querySelector('input[value="calendar"]').checked = true;
+            document.getElementById('calendarScheduleOptions').style.display = 'block';
+            addTaskModal.show();
         }
 
         function openSchedulePopupForTask(taskId) {
@@ -1884,29 +2256,72 @@
             pendingScheduleTaskId = null;
         }
 
+        async function shareSingleTask(taskId) {
+            const task = allTasks.find(t => t.id === taskId);
+            if (!task) return;
+            
+            const shareEmail = prompt(`Share "${task.title}" with (email):`);
+            if (shareEmail) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/share-schedule`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ shareWithEmail: shareEmail, shareType: 'view' })
+                    });
+                    
+                    if (response.ok) {
+                        showSuccessModal('Task Shared!', `Task has been shared with ${shareEmail}.`);
+                    } else {
+                        showErrorModal('Error sharing task. Please try again.');
+                    }
+                } catch (error) {
+                    showErrorModal('Error sharing task. Please try again.');
+                }
+            }
+        }
+
         function openShareModal() { shareModal.show(); }
         function openExportModal() { exportModal.show(); }
         function openSettingsModal() { settingsModal.show(); }
-        
-        function openQuickAddModal() {
-            document.getElementById('quickTaskForm').reset();
-            document.getElementById('calendarScheduleOptions').style.display = 'none';
-            document.getElementById('recurringOptions').style.display = 'none';
-            document.querySelector('input[value="funnel"]').checked = true;
-            addTaskModal.show();
+        function openProjectsModal() { 
+            loadProjects();
+            projectsModal.show(); 
         }
-        
-        function openAddTaskAtTimeModal(dateTime) {
-            document.getElementById('quickTaskForm').reset();
-            const formattedDate = dateTime.toISOString().slice(0, 16);
-            document.getElementById('quickTaskStart').value = formattedDate;
-            const endDate = new Date(dateTime);
-            endDate.setHours(endDate.getHours() + 1);
-            document.getElementById('quickTaskEnd').value = endDate.toISOString().slice(0, 16);
-            document.getElementById('quickTaskDeadline').value = formattedDate;
-            document.querySelector('input[value="calendar"]').checked = true;
-            document.getElementById('calendarScheduleOptions').style.display = 'block';
-            addTaskModal.show();
+        function openAddProjectModal() { addProjectModal.show(); }
+
+        function toggleFunnelCollapse() {
+            const content = document.getElementById('funnelContent');
+            const btn = document.getElementById('collapseFunnelBtn');
+            
+            if (content.style.maxHeight) {
+                content.style.maxHeight = null;
+                btn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+            } else {
+                content.style.maxHeight = '300px';
+                btn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+            }
+        }
+
+        function initFilters() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.onclick = () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFilter = btn.dataset.filter;
+                    currentPage = 1;
+                    renderFunnelTasks();
+                };
+            });
+        }
+
+        function initRecurringToggle() {
+            const recurringCheckbox = document.getElementById('quickTaskRecurring');
+            if (recurringCheckbox) {
+                recurringCheckbox.onchange = () => {
+                    document.getElementById('recurringOptions').style.display = recurringCheckbox.checked ? 'block' : 'none';
+                };
+            }
         }
 
         function initPlacementToggle() {
@@ -1932,42 +2347,62 @@
             });
         }
 
-        function initFilters() {
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.onclick = () => {
-                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    currentFilter = btn.dataset.filter;
-                    renderFunnelTasks();
-                };
-            });
-        }
-
-        function initRecurringToggle() {
-            const recurringCheckbox = document.getElementById('quickTaskRecurring');
-            if (recurringCheckbox) {
-                recurringCheckbox.onchange = () => {
-                    document.getElementById('recurringOptions').style.display = recurringCheckbox.checked ? 'block' : 'none';
-                };
+        // ============ INITIALIZATION ============
+        document.addEventListener('DOMContentLoaded', async function() {
+            log('Dashboard loading...');
+            
+            // Initialize modals
+            taskModal = new bootstrap.Modal(document.getElementById('taskModal'));
+            addTaskModal = new bootstrap.Modal(document.getElementById('addTaskModal'));
+            settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            schedulePopupModal = new bootstrap.Modal(document.getElementById('schedulePopupModal'));
+            shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
+            exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
+            statsModal = new bootstrap.Modal(document.getElementById('statsModal'));
+            activityModal = new bootstrap.Modal(document.getElementById('activityModal'));
+            projectsModal = new bootstrap.Modal(document.getElementById('projectsModal'));
+            addProjectModal = new bootstrap.Modal(document.getElementById('addProjectModal'));
+            logoutConfirmModal = new bootstrap.Modal(document.getElementById('logoutConfirmModal'));
+            successModal = new bootstrap.Modal(document.getElementById('successModal'));
+            errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+            infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
+            warningModal = new bootstrap.Modal(document.getElementById('warningModal'));
+            deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+            
+            const authResult = await checkAuth();
+            if (authResult) {
+                document.getElementById('mainContent').style.display = 'block';
+                document.getElementById('loadingSpinner').style.display = 'none';
+                
+                initCalendar();
+                await loadAllTasks();
+                await loadSettings();
+                await loadProjects();
+                initFilters();
+                initRecurringToggle();
+                initPlacementToggle();
+                initCalendarViewButtons();
+                
+                // Set up search input debounce
+                const searchInput = document.getElementById('taskSearchInput');
+                let debounceTimer;
+                searchInput.addEventListener('input', () => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        filterTasks();
+                    }, 300);
+                });
+                
+                // Refresh every 30 seconds
+                refreshInterval = setInterval(async function() {
+                    if (isAuthenticated && document.hasFocus()) {
+                        await loadAllTasks();
+                    }
+                }, 30000);
+                
+                log('Dashboard initialized successfully');
             }
-        }
-
-        function getSeverityColor(severity) {
-            const colors = { 'Critical': '#dc3545', 'High': '#fd7e14', 'Medium': '#ffc107', 'Low': '#28a745' };
-            return colors[severity] || '#6B46C1';
-        }
-
-        function formatDate(dateString) {
-            if (!dateString) return 'Not set';
-            return new Date(dateString).toLocaleString();
-        }
-        
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+        });
     </script>
 </body>
 </html>
